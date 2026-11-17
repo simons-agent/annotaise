@@ -184,6 +184,15 @@ observed. Tokens and passwords are shown as `<redacted>`.
 
 Not contradictions, for the record: the justification can only be "required always" (design's fallback); the `LLM` column is absent unless an LLM answer exists (G4's LLM-row check must tolerate the missing column); a question column is absent until some answer contains its key.
 
+## Generated forms (G2, 2026-11-17)
+
+`python -m privdev.annotation.forms build` writes `form-a.json`, `form-b.json` (same questions) and `background.json` under `experiments/study-1/annotation/`. Pushed to `annotaise-test`, project 2: labeling 8 (form_mode, background on) got Form A and the background form (its step 2 element is 89); labeling 9 (decision, `decision_mode=manual`, 3 users, quotas legal 1 / technical 1) got Form B and `decisive_question` = 106, the step 2 element (confirmed by GET). GET-back showed every question, option and follow-up text verbatim, and the export column names of the two threat follow-ups follow `Q : <step 2 text> > <option> > <threat text>`.
+
+New platform facts found while pushing:
+- Element text is max 500 characters, option text max 300 (`backend/labeling/models.py:146,174`); longer gives `400 INVALID_FORM_STRUCTURE` with no detail. The criterion fills most of the step 1 question, so the 15 rights are listed in the task guide, not in the form.
+- `GET /labelings/<id>/answers/` is cursor-paginated: `{count, next, previous, results}` (editor roles and admin accounts only). `push` reads `count`.
+- Test labelings 8 and 9 hold only the pushed forms and no answers.
+
 ## Test data left on `annotaise-test`
 
 Project 2 "P4 spike 2026-11-17" with labelings 2–7 and their items/answers;
