@@ -26,7 +26,8 @@ membership-scoped).
 The frontend calls these three only from the labeling management pages
 (`labelings_manage/...`), never from the annotator screens, so no UI change is
 needed. Item serving (`items/<id>/`), `POST /answers/` and the structure `GET`
-are untouched. The old `401` for non-members of the item list is now `403`.
+stay open to annotators (their response bodies change, see below). The old `401`
+for non-members of the item list is now `403`.
 
 The served item (`items/<id>/` and the anonymous variant) also embedded the full
 `ItemSerializer`, so in decision mode an annotator received earlier annotators'
@@ -37,6 +38,14 @@ now nests an `AnnotatorItemSerializer` with only `id`, `labeling`, `payload`,
 `row_index`, `status`. The frontend reads those fields only on the management
 pages (via the answers list), not on the served item.
 
+`POST /answers/` returned the new answer with the same full `ItemSerializer` as
+`item_detail`, so right after submitting, an annotator received the item's tally
+including earlier annotators' votes. The create response now uses
+`AnnotatorAnswerSerializer`, whose `item_detail` is the `AnnotatorItemSerializer`
+field set. The annotator answer page reads only `decision_warning` from that
+response; the management pages read `item_detail` from the answers list, which
+keeps the full serializer.
+
 ### Tests
 
 New tests for each endpoint: annotator and non-member get 403 (and no
@@ -46,3 +55,6 @@ annotator can still be served an item and submit an answer.
 New `ServedItemHidesVoteTalliesTest`: in a decision labeling where one annotator
 already answered, the item served to a second annotator has none of the tally
 or decision fields and no vote key in the body.
+The same test class checks that the `POST /answers/` response to the second
+annotator carries none of those fields in `item_detail` (and no vote key),
+while the stored tally does count both votes.

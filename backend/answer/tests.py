@@ -980,3 +980,22 @@ class ServedItemHidesVoteTalliesTest(TestCase):
             self.assertNotIn(field.encode(), response.content)
         # the tally key is the answer text; it only appears as a vote key, not in the form
         self.assertNotIn(b'"UNIQUEVOTEXYZ":', response.content)
+
+    def test_answer_create_response_has_no_vote_tally_fields(self):
+        """Final review: POST /answers/ returned item_detail with earlier annotators' votes."""
+        ItemMembership.objects.create(item=self.item, user=self.second)
+        client = APIClient()
+        client.force_authenticate(self.second)
+        response = client.post("/answers/", {
+            "labeling": self.labeling.id, "item": self.item.id,
+            "answer_payload": {str(self.question.id): "UNIQUEVOTEXYZ"},
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.content)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.decision_payload, {"UNIQUEVOTEXYZ": 2})  # tally exists
+        body = response.json()
+        self.assertEqual(body["item_detail"]["id"], self.item.id)
+        for field in self.LEAK_FIELDS:
+            self.assertNotIn(field, body["item_detail"])
+            self.assertNotIn(field.encode(), response.content)
+        self.assertNotIn(b'"UNIQUEVOTEXYZ":', response.content)

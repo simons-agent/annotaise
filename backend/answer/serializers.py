@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Answer, BackgroundAnswer
-from item.serializers import ItemSerializer
+from item.serializers import AnnotatorItemSerializer, ItemSerializer
 
 
 class AnswerSerializer(serializers.ModelSerializer):
@@ -83,6 +83,16 @@ class AnswerSerializer(serializers.ModelSerializer):
         if not labeling:
             raise serializers.ValidationError({"labeling": "Rotulação é obrigatória."})
         return super().validate(attrs)
+
+
+class AnnotatorAnswerSerializer(AnswerSerializer):
+    """
+    Answer as returned to the annotator who just submitted it: `item_detail`
+    without vote tallies or the decision outcome, which would reveal earlier
+    annotators' answers (same field set as the served item).
+    """
+
+    item_detail = AnnotatorItemSerializer(source="item", read_only=True)
 
 
 class LabelingAnswerDashboardSerializer(serializers.Serializer):

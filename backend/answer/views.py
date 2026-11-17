@@ -2,6 +2,7 @@ from .models import Answer, BackgroundAnswer
 from item.models import ItemMembership, Item
 from user.models import UserGroup
 from .serializers import (
+    AnnotatorAnswerSerializer,
     AnswerSerializer,
     AnswerDashboardSerializer,
     BackgroundAnswerSerializer,
@@ -317,7 +318,7 @@ class AnswerViewset(viewsets.ModelViewSet):
                     labeling.status = 'finished'
                     labeling.save()
 
-                response_data = dict(serializer.data)
+                response_data = dict(self._annotator_data(serializer))
                 if decision_warning:
                     response_data["decision_warning"] = decision_warning
                 return Response(response_data, status=201)
@@ -335,7 +336,11 @@ class AnswerViewset(viewsets.ModelViewSet):
                 labeling.status = 'finished'
                 labeling.save()
 
-            return Response(serializer.data, status=201, headers=headers)
+            return Response(self._annotator_data(serializer), status=201, headers=headers)
+
+    def _annotator_data(self, serializer):
+        """The create response goes to the annotator: no vote tallies in item_detail."""
+        return AnnotatorAnswerSerializer(serializer.instance, context=self.get_serializer_context()).data
 
     def _assert_owner_or_admin(self, answer):
         user = self.request.user
