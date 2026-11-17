@@ -4,10 +4,10 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .serializers import CustomUserSerializer, CustomUserCreateSerializer
+from ..serializers import CustomUserSerializer, CustomUserCreateSerializer
 from project.models import Project, ProjectMembership
 from labeling.models import Labeling, LabelingMembership
-from .models import Invitation
+from ..models import Invitation
 
 
 class CustomUserSerializerTest(TestCase):
