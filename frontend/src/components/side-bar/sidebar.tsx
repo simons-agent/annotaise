@@ -9,6 +9,7 @@ import { useIsAdmin } from '@/lib/AdminContext';
 import { BookmarkPlus } from 'lucide-react';
 import LanguageToggle from '@/components/LanguageToggle';
 import { useTranslations } from '@/i18n/use-translations';
+import { withBasePath } from '@/lib/basePath';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -49,13 +50,13 @@ export default function Sidebar({ isOpen = true, onToggle }: SidebarProps) {
           {isOpen ? (
             <div className="w-full flex justify-center">
               <div className="relative w-full h-20 ">
-                <Image src="/Medium_Full_Logo_Light.svg" alt="Logo" fill className="object-contain" />
+                <Image src={withBasePath('/Medium_Full_Logo_Light.svg')} alt="Logo" fill className="object-contain" />
               </div>
             </div>
           ) : (
             <div className="relative w-10 h-10 flex items-center justify-center group">
               <Image
-                src="/Logo_Icon_Light.svg"
+                src={withBasePath('/Logo_Icon_Light.svg')}
                 alt="Logo"
                 width={24}
                 height={24}

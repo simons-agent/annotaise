@@ -33,7 +33,8 @@ SECRET_KEY = os.getenv(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "true").lower() != "false"
+# "false", "0", "no" and "off" all disable debug; unset keeps the upstream default (on).
+DEBUG = env_bool(os.getenv("DEBUG"), True)
 
 allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = [host.strip() for host in allowed_hosts.split(",") if host.strip()]
@@ -230,12 +231,20 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 STATIC_URL = '/static/'
 
+# Optional URL prefix when the API is served beneath a sub-path behind a proxy that
+# strips it (e.g. "/annotaise/backend"). Django then generates prefixed URLs
+# (admin, static) while routing on the unprefixed path.
+FORCE_SCRIPT_NAME = os.getenv("DJANGO_FORCE_SCRIPT_NAME") or None
+if FORCE_SCRIPT_NAME:
+    FORCE_SCRIPT_NAME = "/" + FORCE_SCRIPT_NAME.strip("/")
+    STATIC_URL = f"{FORCE_SCRIPT_NAME}/static/"
+
 # User-uploaded files
 # https://docs.djangoproject.com/en/5.0/ref/settings/#std-setting-MEDIA_ROOT
 
 MEDIA_ROOT_NAME = 'media'
 MEDIA_ROOT = os.path.join(BASE_DIR, MEDIA_ROOT_NAME)
-MEDIA_URL = f'/{MEDIA_ROOT_NAME}/'
+MEDIA_URL = f'{FORCE_SCRIPT_NAME or ""}/{MEDIA_ROOT_NAME}/'
 
 EXPORT_DIRECTORY = os.path.join(BASE_DIR, 'exports')
 
@@ -263,6 +272,12 @@ CORS_ALLOWED_ORIGINS = [
     "https://annotaise-api.aise-lab.com",
 ]
 
+def env_list(name: str) -> list[str]:
+    return [value.strip() for value in os.getenv(name, "").split(",") if value.strip()]
+
+
+CORS_ALLOWED_ORIGINS += env_list("DJANGO_CORS_ALLOWED_ORIGINS")
+
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
@@ -275,8 +290,12 @@ CSRF_TRUSTED_ORIGINS = [
     "https://annotaise-api.aise-lab.com",
 ]
 
-CSRF_COOKIE_DOMAIN = ".aise-lab.com"   
-SESSION_COOKIE_DOMAIN = ".aise-lab.com"
+CSRF_TRUSTED_ORIGINS += env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+
+# Set DJANGO_COOKIE_DOMAIN to an empty value to use host-only cookies on other domains.
+COOKIE_DOMAIN = os.getenv("DJANGO_COOKIE_DOMAIN", ".aise-lab.com") or None
+CSRF_COOKIE_DOMAIN = COOKIE_DOMAIN
+SESSION_COOKIE_DOMAIN = COOKIE_DOMAIN
 
 SESSION_COOKIE_SAMESITE = "None"
 

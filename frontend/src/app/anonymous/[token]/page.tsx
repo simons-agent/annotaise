@@ -21,6 +21,7 @@ import type { LabelingStructureSection } from '@/modules/labelings/labelingsType
 import Button from '@/components/button/Button';
 import GuidePanel from '@/components/answer/GuidePanel';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { withBasePath } from '@/lib/basePath';
 
 // Public, token-based clone of the annotator answer page. It runs outside the
 // authenticated (inside) layout: no sidebar, no back navigation. It reuses the
@@ -256,7 +257,7 @@ export default function AnonymousAnswerPage() {
       <header className="flex items-center bg-blueberry-700 px-6 py-4 text-white shadow-md">
         <div className="flex flex-1 items-center justify-between gap-3">
           <span className="relative block h-9 w-44 shrink-0">
-            <Image src="/Full_Logo_Dark.svg" alt="Annotaise" fill priority className="object-contain object-left" />
+            <Image src={withBasePath('/Full_Logo_Dark.svg')} alt="Annotaise" fill priority className="object-contain object-left" />
           </span>
           <div className="flex flex-wrap items-center justify-end gap-3">
             {rowIndex !== null ? (

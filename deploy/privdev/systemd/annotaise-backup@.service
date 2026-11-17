@@ -1,0 +1,8 @@
+[Unit]
+Description=AnnotAISE pg_dump backup for %i
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/projects/annotaise/repo/deploy/privdev/backup.sh %i

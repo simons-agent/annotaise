@@ -2,6 +2,7 @@
 
 import Cookies from 'js-cookie';
 import { api } from '@/lib/api';
+import { withBasePath } from '@/lib/basePath';
 
 const storeToken = (token: string, type: 'access' | 'refresh') => {
   Cookies.set(type + 'Token', token);
@@ -23,8 +24,8 @@ const removeTokens = () => {
 const forceLogoutAndRedirect = () => {
   removeTokens();
   if (typeof window !== 'undefined') {
-    if (window.location.pathname === '/login') return;
-    window.location.replace('/login');
+    if (window.location.pathname === withBasePath('/login')) return;
+    window.location.replace(withBasePath('/login'));
   }
 };
 

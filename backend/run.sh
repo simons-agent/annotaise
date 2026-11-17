@@ -26,7 +26,8 @@ uv run manage.py createsuperuser --noinput --username "${DJANGO_SUPERUSER_USER}"
 echo "Superuser created or already exists."
 
 # Start the server
-if [ "$DEBUG" = "false" ]; then
+case "${DEBUG,,}" in false|0|no|off) PRODUCTION=1 ;; *) PRODUCTION=0 ;; esac
+if [ "$PRODUCTION" = "1" ]; then
     echo "Collecting static files..."
     uv run manage.py collectstatic --no-input
     echo "Static files collected successfully."
