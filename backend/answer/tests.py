@@ -923,3 +923,60 @@ class AnnotatorCannotReadOthersAnswersTest(TestCase):
         self.assertEqual(submitted.status_code, status.HTTP_201_CREATED)
         # the generic answer list was already admin-only; stays closed to annotators
         self.assertEqual(client.get("/answers/").status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ServedItemHidesVoteTalliesTest(TestCase):
+    """P5 fix round 1: next-item must not carry other annotators' vote tallies."""
+
+    LEAK_FIELDS = ("decision_payload", "llm_tiebreak_result",
+                   "final_decision_source", "final_decision_value")
+
+    def setUp(self):
+        User = get_user_model()
+        self.first = User.objects.create_user(username="p5s_1", email="p5s_1@example.com", password="x")
+        self.second = User.objects.create_user(username="p5s_2", email="p5s_2@example.com", password="x")
+        project = Project.objects.create(name="P5S", created_by=self.first)
+        self.labeling = Labeling.objects.create(
+            title="P5S", created_by=self.first, project=project, decision=True,
+            users_per_item=3, start_date=now().date(), final_date=now().date(),
+        )
+        AnswerTestsHelper.enroll(self.labeling, self.first, self.second)
+        section = LabelingSection.objects.create(
+            labeling=self.labeling, form_type=LabelingSection.FormType.MAIN,
+            title="Main", order=1,
+        )
+        self.question = LabelingElement.objects.create(
+            labeling_section=section, text="Q",
+            question_type=LabelingElement.QuestionType.MULTIPLE_CHOICE, order=1,
+        )
+        MultipleChoiceItem.objects.create(
+            labeling_element=self.question, text="UNIQUEVOTEXYZ", value=False, order=1
+        )
+        self.labeling.decisive_question = self.question
+        self.labeling.save()
+        self.item = Item.objects.create(
+            labeling=self.labeling, payload={"text": "x"}, row_index=1
+        )
+        ItemMembership.objects.create(item=self.item, user=self.first)
+        client = APIClient()
+        client.force_authenticate(self.first)
+        r = client.post("/answers/", {
+            "labeling": self.labeling.id, "item": self.item.id,
+            "answer_payload": {str(self.question.id): "UNIQUEVOTEXYZ"},
+        }, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED, r.content)
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.decision_payload)  # the tally exists
+
+    def test_served_item_has_no_vote_tally_fields(self):
+        client = APIClient()
+        client.force_authenticate(self.second)
+        response = client.get(f"/items/{self.labeling.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["item"]["id"], self.item.id)  # it is the same item
+        for field in self.LEAK_FIELDS:
+            self.assertNotIn(field, body["item"])
+            self.assertNotIn(field.encode(), response.content)
+        # the tally key is the answer text; it only appears as a vote key, not in the form
+        self.assertNotIn(b'"UNIQUEVOTEXYZ":', response.content)

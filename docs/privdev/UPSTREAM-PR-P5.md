@@ -28,8 +28,21 @@ The frontend calls these three only from the labeling management pages
 needed. Item serving (`items/<id>/`), `POST /answers/` and the structure `GET`
 are untouched. The old `401` for non-members of the item list is now `403`.
 
+The served item (`items/<id>/` and the anonymous variant) also embedded the full
+`ItemSerializer`, so in decision mode an annotator received earlier annotators'
+vote tallies (`decision_payload`) and the decision outcome
+(`llm_tiebreak_result`, `final_decision_source`, `final_decision_value`,
+`llm_tiebreak_attempted`) for the item about to be answered. `NextItemResponseSerializer`
+now nests an `AnnotatorItemSerializer` with only `id`, `labeling`, `payload`,
+`row_index`, `status`. The frontend reads those fields only on the management
+pages (via the answers list), not on the served item.
+
 ### Tests
 
 New tests for each endpoint: annotator and non-member get 403 (and no
 e-mail/vote data in the body), owner and admin account still get 200, and an
 annotator can still be served an item and submit an answer.
+
+New `ServedItemHidesVoteTalliesTest`: in a decision labeling where one annotator
+already answered, the item served to a second annotator has none of the tally
+or decision fields and no vote key in the body.

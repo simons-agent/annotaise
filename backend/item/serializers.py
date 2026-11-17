@@ -26,9 +26,19 @@ class ItemSerializer(serializers.ModelSerializer):
 class UploadItemCSVSerializer(serializers.Serializer):
     file = serializers.FileField()
 
+class AnnotatorItemSerializer(ItemSerializer):
+    """
+    Item as served to an annotator: no vote tallies or decision outcome, which
+    would reveal earlier annotators' answers before this one is given.
+    """
+
+    class Meta(ItemSerializer.Meta):
+        fields = ['id', 'labeling', 'payload', 'row_index', 'status']
+
+
 class NextItemResponseSerializer(serializers.Serializer):
     sections = serializers.SerializerMethodField()
-    item = ItemSerializer(source='*', read_only=True)
+    item = AnnotatorItemSerializer(source='*', read_only=True)
     form_mode = serializers.BooleanField(source='labeling.form_mode', read_only=True)
     guide = serializers.CharField(source='labeling.guide', read_only=True)
 
