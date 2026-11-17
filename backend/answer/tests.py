@@ -1,3 +1,7 @@
+import csv
+import io
+from datetime import datetime
+
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
@@ -755,3 +759,79 @@ class GroupQuotaAnswerEnforcementTest(TestCase):
         self.assertEqual(answer_a.responded_as, self.group_a)
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, "finished")
+
+
+class ExportAnswersColumnsTest(TestCase):
+    """The answer CSV export carries when and in which group each answer was given."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="export_admin", email="ea@g.com", password="123", account_type="admin"
+        )
+        self.legal_user = User.objects.create_user(username="exp_legal", email="el@g.com", password="123")
+        self.tech_user = User.objects.create_user(username="exp_tech", email="et@g.com", password="123")
+
+        self.legal = UserGroup.objects.create(name="legal", created_by=self.admin)
+        self.technical = UserGroup.objects.create(name="technical", created_by=self.admin)
+        UserGroupMembership.objects.create(group=self.legal, user=self.legal_user)
+        UserGroupMembership.objects.create(group=self.technical, user=self.tech_user)
+
+        self.project = Project.objects.create(name="Export Project", created_by=self.admin)
+        self.labeling = Labeling.objects.create(
+            title="Export Labeling",
+            created_by=self.admin,
+            project=self.project,
+            users_per_item=2,
+            items_per_group={"legal": 1, "technical": 1},
+            decision_mode="human",
+            start_date=now().date(),
+            final_date=now().date(),
+        )
+        section = LabelingSection.objects.create(
+            labeling=self.labeling, form_type=LabelingSection.FormType.MAIN, title="Main", order=1
+        )
+        self.question = LabelingElement.objects.create(
+            labeling_section=section,
+            text="Question",
+            question_type=LabelingElement.QuestionType.TEXT,
+            order=1,
+        )
+        self.item = Item.objects.create(labeling=self.labeling, payload={"text": "Item"}, row_index=1)
+        for user in (self.legal_user, self.tech_user):
+            ItemMembership.objects.create(item=self.item, user=user)
+        AnswerTestsHelper.enroll(self.labeling, self.legal_user, self.tech_user)
+
+    def _answer_as(self, user):
+        client = APIClient()
+        client.force_authenticate(user)
+        return client.post(
+            reverse("answers-list"),
+            {
+                "labeling": self.labeling.id,
+                "item": self.item.id,
+                "answer_payload": {str(self.question.id): "ok"},
+            },
+            format="json",
+        )
+
+    def test_export_has_created_at_and_responded_as(self):
+        self.assertEqual(self._answer_as(self.legal_user).status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self._answer_as(self.tech_user).status_code, status.HTTP_201_CREATED)
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.get(reverse("answer-export-by-labeling", args=[self.labeling.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        rows = list(csv.DictReader(io.StringIO(response.content.decode())))
+        self.assertIn("created_at", rows[0])
+        self.assertIn("responded_as", rows[0])
+
+        by_user = {int(r["user_id"]): r for r in rows}
+        self.assertEqual(by_user[self.legal_user.id]["responded_as"], "legal")
+        self.assertEqual(by_user[self.tech_user.id]["responded_as"], "technical")
+        for answer in Answer.objects.all():
+            parsed = datetime.fromisoformat(by_user[answer.answered_by_id]["created_at"])
+            self.assertIsNotNone(parsed.tzinfo)
+            self.assertEqual(parsed, answer.created_at)

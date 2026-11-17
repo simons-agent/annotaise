@@ -563,7 +563,7 @@ class ExportAnswersView(APIView):
         labeling = Labeling.objects.get(id=labeling_id)
         answers = (
             Answer.objects.filter(labeling_id=labeling_id)
-            .select_related("item", "answered_by")
+            .select_related("item", "answered_by", "responded_as")
             .order_by("item__row_index", "id")
         )
         questions_qs = LabelingElement.objects.filter(
@@ -610,6 +610,8 @@ class ExportAnswersView(APIView):
             row["LLM"] = "YES" if is_llm else ""
             if is_llm:
                 has_llm = True
+            row["created_at"] = answer.created_at.isoformat()
+            row["responded_as"] = answer.responded_as.name if answer.responded_as_id else ""
             for question_number, response in payload.items():
                 # follow-up answer key
                 if question_number.startswith("followup_"):
