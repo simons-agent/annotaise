@@ -1,0 +1,33 @@
+{
+  "sections": [
+    {
+      "title": "P4 probe section 1",
+      "order": 1,
+      "elements": [
+        {"order": 1, "text": "Record", "required": false, "question_type": "context", "context_type": "text", "column_name": "record_text"},
+        {"order": 2, "text": "P4 step 1: does the criterion apply?", "required": true, "question_type": "multiple_choice", "allow_multiple": false,
+         "multiple_choice_items": [
+           {"text": "yes", "value": false, "order": 1},
+           {"text": "no", "value": false, "order": 2},
+           {"text": "unclear", "value": false, "order": 3}
+         ]}
+      ]
+    },
+    {
+      "title": "P4 probe section 2",
+      "order": 2,
+      "elements": [
+        {"order": 1, "text": "Record", "required": false, "question_type": "context", "context_type": "text", "column_name": "record_text"},
+        {"order": 2, "text": "P4 step 2: how is the right affected?", "required": true, "question_type": "multiple_choice", "allow_multiple": false,
+         "multiple_choice_items": [
+           {"text": "inherent", "value": false, "order": 1,
+            "follow_up_question": {"text": "P4 threat", "required": true, "question_type": "text"}},
+           {"text": "conditional", "value": false, "order": 2,
+            "follow_up_question": {"text": "P4 threat", "required": true, "question_type": "text"}},
+           {"text": "none", "value": false, "order": 3}
+         ]},
+        {"order": 3, "text": "P4 justification", "required": false, "question_type": "text"}
+      ]
+    }
+  ]
+}
