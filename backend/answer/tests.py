@@ -835,3 +835,91 @@ class ExportAnswersColumnsTest(TestCase):
             parsed = datetime.fromisoformat(by_user[answer.answered_by_id]["created_at"])
             self.assertIsNotNone(parsed.tzinfo)
             self.assertEqual(parsed, answer.created_at)
+
+
+class AnnotatorCannotReadOthersAnswersTest(TestCase):
+    """P5: answers (with e-mails) of a labeling are for edit roles only."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(
+            username="p5_owner", email="p5_owner@example.com", password="123",
+            account_type="admin",
+        )
+        self.annotator = User.objects.create_user(
+            username="p5_ann", email="p5_ann@example.com", password="123",
+        )
+        self.other = User.objects.create_user(
+            username="p5_other", email="p5_other@example.com", password="123",
+        )
+        self.outsider = User.objects.create_user(
+            username="p5_out", email="p5_out@example.com", password="123",
+        )
+        self.project = Project.objects.create(name="P5", created_by=self.owner)
+        self.labeling = Labeling.objects.create(
+            title="P5", created_by=self.owner, project=self.project,
+            users_per_item=2, start_date=now().date(), final_date=now().date(),
+        )
+        AnswerTestsHelper.enroll(self.labeling, self.owner, role="owner")
+        AnswerTestsHelper.enroll(self.labeling, self.annotator, self.other)
+        section = LabelingSection.objects.create(
+            labeling=self.labeling, form_type=LabelingSection.FormType.MAIN,
+            title="Main", order=1,
+        )
+        self.question = LabelingElement.objects.create(
+            labeling_section=section, text="Q",
+            question_type=LabelingElement.QuestionType.MULTIPLE_CHOICE, order=1,
+        )
+        self.item = Item.objects.create(
+            labeling=self.labeling, payload={"text": "x"}, row_index=1
+        )
+        Answer.objects.create(
+            item=self.item, labeling=self.labeling, answered_by=self.other,
+            answer_payload={str(self.question.id): "other-secret"},
+        )
+        self.list_url = f"/labelings/{self.labeling.id}/answers/"
+
+    def _client(self, user):
+        c = APIClient()
+        c.force_authenticate(user)
+        return c
+
+    def test_annotator_cannot_list_labeling_answers(self):
+        response = self._client(self.annotator).get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(b"p5_other@example.com", response.content)
+
+    def test_non_member_cannot_list_labeling_answers(self):
+        response = self._client(self.outsider).get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_export_account_still_reads_all(self):
+        response = self._client(self.owner).get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), 1)
+
+    def test_admin_account_without_membership_still_reads_all(self):
+        admin = get_user_model().objects.create_user(
+            username="p5_adm", email="p5_adm@example.com", password="123",
+            account_type="admin",
+        )
+        response = self._client(admin).get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_annotator_item_serving_and_answer_submit_unchanged(self):
+        client = self._client(self.annotator)
+        served = client.get(f"/items/{self.labeling.id}/")
+        self.assertEqual(served.status_code, status.HTTP_200_OK, served.content)
+        item_id = served.json()["item"]["id"] if "item" in served.json() else self.item.id
+        submitted = client.post(
+            "/answers/",
+            {
+                "labeling": self.labeling.id,
+                "item": item_id,
+                "answer_payload": {str(self.question.id): "mine"},
+            },
+            format="json",
+        )
+        self.assertEqual(submitted.status_code, status.HTTP_201_CREATED)
+        # the generic answer list was already admin-only; stays closed to annotators
+        self.assertEqual(client.get("/answers/").status_code, status.HTTP_403_FORBIDDEN)

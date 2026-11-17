@@ -71,6 +71,9 @@ class LabelingViewSet(viewsets.ModelViewSet):
             self.permission_classes = [IsAdminAccount, IsLabelingOwnerPermission]
         elif self.action in ['update','partial_update']:
             self.permission_classes = [IsAdminAccount, CanEditLabelingPermission]
+        elif self.action == 'agreement_summary':
+            # Aggregates every annotator's answers: edit roles / admin accounts only.
+            self.permission_classes = [IsAdminAccount | CanEditLabelingPermission]
         else:
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()

@@ -29,24 +29,14 @@ from django.utils.text import slugify
 
 
 class ListItemsView(ListAPIView):
+    # Items carry vote counts (decision_payload): labeling edit roles and
+    # admin accounts only. Annotators are served items by NextItemView.
+    permission_classes = [IsAdminAccount | CanEditLabelingPermission]
     serializer_class = ItemSerializer
 
     def get_queryset(self):
         labeling_id = self.kwargs.get("labeling_id")
         return Item.objects.filter(labeling_id=labeling_id).distinct()
-
-    def list(self, request, *args, **kwargs):
-        labeling_id = kwargs.get("labeling_id")
-
-        if not LabelingMembership.objects.filter(
-            labeling_id=labeling_id,
-            user=request.user
-        ).exists():
-            return Response(
-                {"detail": "Você não tem acesso a essa rotulação"},
-                status=401
-            )
-        return super().list(request, *args, **kwargs)
 
 
 class ImportItemsCsvView(APIView):

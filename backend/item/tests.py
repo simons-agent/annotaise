@@ -257,3 +257,41 @@ class ImportItemsCsvViewTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Labeling.objects.filter(id=self.labeling.id).exists())
+
+
+class AnnotatorCannotReadItemVoteCountsTest(TestCase):
+    """P5: the item list carries vote counts (decision_payload): edit roles only."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="p5i_owner", email="p5i_owner@example.com", password="x", account_type="admin")
+        self.annotator = User.objects.create_user(username="p5i_ann", email="p5i_ann@example.com", password="x")
+        self.outsider = User.objects.create_user(username="p5i_out", email="p5i_out@example.com", password="x")
+        self.project = Project.objects.create(name="P5I", created_by=self.owner)
+        self.labeling = Labeling.objects.create(
+            project=self.project, title="P5I", created_by=self.owner,
+            start_date=timezone.now().date(), final_date=timezone.now().date(),
+        )
+        LabelingMembership.objects.create(labeling=self.labeling, user=self.owner, role="owner")
+        LabelingMembership.objects.create(labeling=self.labeling, user=self.annotator, role="annotator")
+        Item.objects.create(labeling=self.labeling, payload={"a": 1}, row_index=0,
+                            decision_payload={"votes": {"x": 2}})
+        self.url = f"/labelings/{self.labeling.id}/items/"
+
+    def _get(self, user):
+        c = APIClient()
+        c.force_authenticate(user)
+        return c.get(self.url)
+
+    def test_annotator_cannot_read_item_vote_counts(self):
+        response = self._get(self.annotator)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(b"decision_payload", response.content)
+
+    def test_non_member_cannot_read_items(self):
+        self.assertEqual(self._get(self.outsider).status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_owner_and_admin_account_still_read_items(self):
+        self.assertEqual(self._get(self.owner).status_code, status.HTTP_200_OK)
+        admin = get_user_model().objects.create_user(username="p5i_adm", email="p5i_adm@example.com", password="x", account_type="admin")
+        self.assertEqual(self._get(admin).status_code, status.HTTP_200_OK)

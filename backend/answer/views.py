@@ -444,6 +444,9 @@ class AnswerRowCursorPagination(StandardCursorPagination):
 
 
 class AnswersDashboardView(ListAPIView):
+    # Other annotators' answers (with e-mails): labeling edit roles and admin
+    # accounts only. The annotator UI reads its own answers via GET /answers/.
+    permission_classes = [IsAdminAccount | CanEditLabelingPermission]
     serializer_class = AnswerSerializer
     pagination_class = AnswerRowCursorPagination
 

@@ -1117,6 +1117,18 @@ class LabelingAgreementSummaryViewTest(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_annotator_cannot_read_agreement_summary(self):
+        self.client.force_authenticate(self.annotator_a)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_export_account_still_reads_all(self):
+        self.request_user.account_type = "admin"
+        self.request_user.save()
+        self.client.force_authenticate(self.request_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 class TransferProjectPermsMigrationTest(TestCase):
     """0038 backfill: project edit roles turn into labeling memberships."""
