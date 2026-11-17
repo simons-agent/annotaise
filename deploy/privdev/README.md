@@ -34,10 +34,30 @@ browser ── Tailscale Serve/Funnel ── /<mount>/ (prefix stripped) ── 
   `unless-stopped`) therefore need no network and are ready in seconds, but a
   change to a `NEXT_PUBLIC_*` value needs an image rebuild (see below). The
   upstream `frontend/Dockerfile` and `run.sh` are unchanged.
-* The API is at `<URL>/backend/` (e.g. `<URL>/backend/api/schema/`,
-  `<URL>/backend/admin/`), because several API routes (`/labelings/...`) have the
-  same names as frontend pages. Django gets its public prefix from
-  `DJANGO_FORCE_SCRIPT_NAME` (`<mount>/backend`).
+* The API is at `<URL>/backend/` (e.g. `<URL>/backend/api/auth/token/`),
+  because several API routes (`/labelings/...`) have the same names as frontend
+  pages. Django gets its public prefix from `DJANGO_FORCE_SCRIPT_NAME`
+  (`<mount>/backend`).
+* **Hidden on the public study instance.** With `GATEWAY_HIDE_ADMIN=1` (set by
+  `write-env.sh` for `annotaise-study` only) the gateway answers `404` for
+  `/backend/admin/`, `/backend/api/docs/`, `/backend/api/redoc/`,
+  `/backend/api/schema/` (and `schema.yaml`) and `/backend/api/auth/register/`
+  (self-registration is `AllowAny` upstream: anyone could create an account or
+  probe e-mail addresses). The annotator UI never calls these, and the PrivDev
+  export account uses only `api/auth/token/` and the labeling endpoints. The
+  Tailnet test instance keeps them (`GATEWAY_HIDE_ADMIN=0`). Admin tasks on the
+  study instance therefore run inside the api container (`dc` as defined in
+  "Start, stop, status" below), e.g.:
+
+  ```sh
+  dc exec api uv run manage.py create_study_accounts --help
+  dc exec api uv run manage.py changepassword admin
+  dc exec api uv run manage.py shell
+  ```
+
+  Check after any gateway change (from outside the Tailnet):
+  `curl -so /dev/null -w '%{http_code}\n' https://agentbox.tail289ef2.ts.net:8443/annotaise/backend/admin/`
+  must print `404`.
 * Overrides in `compose.override.yaml`: no source bind mounts (the code baked
   into the images runs), `DEBUG=0` (gunicorn + collectstatic), all ports bound to
   `127.0.0.1` (only the gateway publishes one; the database publishes none),

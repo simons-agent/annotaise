@@ -77,7 +77,16 @@ services:
 
 configs:
   gateway_conf:
+    # GATEWAY_HIDE_ADMIN=1 (written by write-env.sh for annotaise-study only)
+    # answers 404 for the Django admin, the API docs/schema and self-registration,
+    # none of which the annotator UI or the PrivDev export account use. $uri is
+    # nginx's decoded, slash-merged path, so encoded or doubled slashes match too.
     content: |
+      map $$uri $$privdev_hidden {
+        default 0;
+        "~^/backend/(admin|api/docs|api/redoc|api/schema|api/auth/register)([/.]|$$)" ${GATEWAY_HIDE_ADMIN:-0};
+      }
+
       server {
         listen 8080;
         server_name _;
@@ -85,6 +94,10 @@ configs:
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
+
+        if ($$privdev_hidden) {
+          return 404;
+        }
 
         location /backend/static/ {
           alias /srv/static/;
