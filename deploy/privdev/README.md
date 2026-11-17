@@ -27,9 +27,13 @@ browser ── Tailscale Serve/Funnel ── /<mount>/ (prefix stripped) ── 
   so each instance lives beneath a path mount. Tailscale strips the mount prefix
   before proxying; the gateway is the single loopback port per instance.
 * Next.js is built with `basePath = NEXT_PUBLIC_BASE_PATH` (`/annotaise-test` or
-  `/annotaise`). The frontend is built when its container starts (upstream
-  `run.sh`), so `NEXT_PUBLIC_*` values take effect on the next restart; a start
-  takes a few minutes (npm install + `next build`).
+  `/annotaise`). The frontend uses the deploy-only `frontend.Dockerfile`:
+  `npm ci` (lockfile-strict) and `next build` run at **image build time** with
+  `NEXT_PUBLIC_BASE_PATH` / `NEXT_PUBLIC_API_BASE_URL` as build args, and the
+  container only runs `next start`. Restarts (reboot, Docker restart,
+  `unless-stopped`) therefore need no network and are ready in seconds, but a
+  change to a `NEXT_PUBLIC_*` value needs an image rebuild (see below). The
+  upstream `frontend/Dockerfile` and `run.sh` are unchanged.
 * The API is at `<URL>/backend/` (e.g. `<URL>/backend/api/schema/`,
   `<URL>/backend/admin/`), because several API routes (`/labelings/...`) have the
   same names as frontend pages. Django gets its public prefix from
@@ -92,18 +96,27 @@ P=annotaise-study
 dc() { docker compose -p "$P" -f docker-compose.yaml -f deploy/privdev/compose.override.yaml \
          --env-file "deploy/privdev/$P/.env" "$@"; }
 
-dc up -d --build     # start, or apply code/config changes
+dc up -d --build     # first start, or rebuild + apply code/config changes
 dc ps                # status
-dc logs -f frontend  # wait for "Ready in" after a (re)start
-dc restart           # restart (frontend rebuilds)
-dc stop              # stop, keeping data
+dc logs -f frontend  # "Ready in" a few seconds after a (re)start
+dc restart           # restart (no rebuild, no network install)
+dc stop; dc start    # stop / start again, keeping data
 ```
 
 Never use `dc down -v`: it deletes the instance's database volume.
 
-If the frontend log loops on `Bus error (core dumped)` during `next build`, its
-`npm install` left a truncated native binary (seen once after a slow download).
-Recreate the container to get a fresh install: `dc up -d --force-recreate --no-deps frontend`.
+### Rebuild after changing `NEXT_PUBLIC_*` (URL, mount or port)
+
+`NEXT_PUBLIC_*` values are inlined into the frontend bundle at build time, so a
+restart does not pick them up. After rerunning `write-env.sh`:
+
+```sh
+dc build frontend            # npm ci + next build with the new build args (several minutes)
+dc up -d                     # recreates frontend (and api/gateway if their env changed)
+```
+
+Do the same after pulling frontend code changes. The old container keeps
+serving until the new image is built, so the outage is only the container swap.
 
 ## Backups
 
@@ -159,5 +172,5 @@ agentctl unexpose annotaise --port 8443
 ```
 
 Never run `tailscale serve reset` / `tailscale funnel reset`. If a listener
-port ever changes, rerun `write-env.sh` with the new URL and restart the
-instance, since the URL is baked into the frontend build.
+port ever changes, rerun `write-env.sh` with the new URL and rebuild the
+frontend (see "Rebuild" above), since the URL is baked into the frontend build.

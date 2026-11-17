@@ -41,13 +41,19 @@ services:
     restart: unless-stopped
 
   frontend:
+    # Deploy image: `npm ci` + `next build` at image build time with the
+    # NEXT_PUBLIC_* values as build args; the container only runs `next start`
+    # (no network install or rebuild on restart). Rebuild after changing them.
+    build: !override
+      context: ./frontend
+      dockerfile: ../deploy/privdev/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:?NEXT_PUBLIC_BASE_PATH must be set}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL must be set}
     env_file: !reset []
     volumes: !reset []
     ports: !reset []
-    environment:
-      DEBUG_NEXT: "false"
-      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:?NEXT_PUBLIC_BASE_PATH must be set}
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL must be set}
+    environment: !override
       NEXT_TELEMETRY_DISABLED: "1"
     restart: unless-stopped
 
