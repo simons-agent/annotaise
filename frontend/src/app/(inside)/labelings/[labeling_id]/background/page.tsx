@@ -139,15 +139,17 @@ export default function LabelingBackgroundPage() {
     }
   }, [answers, labelingId, orderedSections, router, t]);
 
+  // <main> is h-screen overflow-hidden, so the page needs its own bounded,
+  // scrollable content area (header fixed, form scrolls to the submit button).
   return (
-    <>
+    <div className="flex h-full flex-col overflow-hidden">
       <InnerPageHeader onBack={() => router.push('/labelings')}>
         <div>
           <h1 className="text-lg font-semibold leading-tight">{labelingTitle || 'BACKGROUND'}</h1>
         </div>
       </InnerPageHeader>
 
-      <div className="mt-4 min-h-[calc(100vh-10vh)]">
+      <div className="mt-4 min-h-0 flex-1">
         <section className="rounded-xl bg-white p-4 h-full overflow-y-auto">
           {isLoading ? (
             <p className="text-sm text-gray-600">{t('common.loading')}</p>
@@ -184,6 +186,6 @@ export default function LabelingBackgroundPage() {
           ) : null}
         </section>
       </div>
-    </>
+    </div>
   );
 }

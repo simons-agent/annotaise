@@ -14,6 +14,17 @@ export default defineConfig({
   test: {
     projects: [
       {
+        // Plain unit tests (no browser): react-dom/server rendering in node.
+        extends: true,
+        esbuild: { jsx: 'automatic' },
+        resolve: { alias: { '@': path.join(dirname, 'src') } },
+        test: {
+          name: 'unit',
+          environment: 'node',
+          include: ['src/**/*.test.{ts,tsx}'],
+        },
+      },
+      {
         extends: true,
         plugins: [
           // The plugin will run tests for the stories defined in your Storybook config
