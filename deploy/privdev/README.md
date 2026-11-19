@@ -125,6 +125,19 @@ dc stop; dc start    # stop / start again, keeping data
 
 Never use `dc down -v`: it deletes the instance's database volume.
 
+### Redeploy
+
+Always take a labelled backup first:
+
+```sh
+deploy/privdev/backup.sh "$P" --label predeploy   # <stamp>-predeploy.dump, never pruned
+dc up -d --build
+```
+
+The nightly retention keeps only the newest unlabelled dump per day, so an
+unlabelled pre-deploy dump is deleted by that night's run. Labelled dumps are
+never pruned; remove them by hand once they are no longer needed.
+
 ### Rebuild after changing `NEXT_PUBLIC_*` (URL, mount or port)
 
 `NEXT_PUBLIC_*` values are inlined into the frontend bundle at build time, so a
@@ -143,7 +156,14 @@ serving until the new image is built, so the outage is only the container swap.
 `backup.sh <project>` runs `pg_dump -Fc` inside the instance's db container and
 writes `/srv/projects/annotaise/runtime/backups/<project>/<UTC timestamp>.dump`
 (directory mode 0700; dumps contain personal data). It keeps the newest dump of
-each of the 14 most recent days and of each of the 8 most recent ISO weeks.
+each of the 14 most recent days and of each of the 8 most recent ISO weeks
+(`prune-backups.py`).
+
+`backup.sh <project> --label <name>` (a-z, 0-9, `-`) writes
+`<UTC timestamp>-<name>.dump` instead. Retention never deletes or counts
+labelled dumps; delete them by hand. Use `--label predeploy` before every
+redeploy (see [Redeploy](#redeploy)). Offline test of label parsing and
+retention: `bash deploy/privdev/tests/test-backup.sh`.
 
 Nightly systemd user timers (02:30 UTC, `Persistent=true`; user lingering is
 enabled for `simon`) run it for both instances. Units live in `systemd/`:
@@ -165,8 +185,8 @@ deploy/privdev/restore.sh <project> /srv/projects/annotaise/runtime/backups/<pro
 
 Destructive: it stops the project, removes its Postgres volume, recreates an
 empty database, loads the dump with `pg_restore --exit-on-error --no-owner`
-and starts the project again. Take a fresh `backup.sh` first if the current
-data matter.
+and starts the project again. Take a fresh `backup.sh <project> --label prerestore`
+first if the current data matter.
 
 Restore check (done on `annotaise-test` on 2026-11-17 before launch): a labeling
 with 3 submitted answers was exported (`/backend/labelings/<id>/answers/export/`)
