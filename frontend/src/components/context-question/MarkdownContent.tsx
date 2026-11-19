@@ -27,7 +27,8 @@ type MarkdownContentProps = {
 export default function MarkdownContent({ children, inline = false, className }: MarkdownContentProps) {
   const Wrapper = inline ? 'span' : 'div';
   const classes = cn(
-    'prose prose-sm max-w-none prose-p:my-0 prose-a:text-blueberry-700 prose-a:visited:text-blueberry-700',
+    // Long unbroken strings (the official-entry URL) wrap instead of widening the panel on a phone.
+    'prose prose-sm max-w-none [overflow-wrap:anywhere] prose-p:my-0 prose-a:text-blueberry-700 prose-a:visited:text-blueberry-700',
     className
   );
 
@@ -42,13 +43,17 @@ export default function MarkdownContent({ children, inline = false, className }:
   const markdown = (text: string) => (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={
-        inline
-          ? {
-              p: ({ children: paragraphChildren }) => <span>{paragraphChildren}</span>,
-            }
-          : undefined
-      }
+      components={{
+        // Links open in a new tab, so following a record's official-entry link
+        // never navigates away from a half-answered item.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `node` must not reach the DOM
+        a: ({ node, children: linkChildren, ...linkProps }) => (
+          <a {...linkProps} target="_blank" rel="noopener noreferrer">
+            {linkChildren}
+          </a>
+        ),
+        ...(inline ? { p: ({ children: paragraphChildren }) => <span>{paragraphChildren}</span> } : {}),
+      }}
     >
       {text}
     </ReactMarkdown>

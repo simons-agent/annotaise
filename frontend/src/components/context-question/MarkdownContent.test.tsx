@@ -68,3 +68,24 @@ describe('MarkdownContent collapsible marker', () => {
     expect(html).not.toContain('<details');
   });
 });
+
+describe('MarkdownContent links', () => {
+  // An annotator who follows the official-entry link must not lose the
+  // half-answered item, so record links open in a new tab.
+  it('opens links before and after the marker in a new tab', () => {
+    const html = render(
+      `Entry: [https://cwe.mitre.org/data/definitions/352.html](https://cwe.mitre.org/data/definitions/352.html)\n\n${MARKER}\n\nSee https://www.cve.org/CVERecord?id=CVE-2024-0001`
+    );
+    const anchors = html.match(/<a [^>]*>/g) ?? [];
+    expect(anchors).toHaveLength(2);
+    for (const a of anchors) {
+      expect(a).toContain('target="_blank"');
+      expect(a).toContain('rel="noopener noreferrer"');
+    }
+  });
+
+  it('inline links open in a new tab too', () => {
+    const html = render('[x](https://example.org)', true);
+    expect(html).toMatch(/<a [^>]*target="_blank"[^>]*>/);
+  });
+});

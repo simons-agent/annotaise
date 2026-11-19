@@ -31,7 +31,7 @@ export default function Sidebar({ isOpen = true, onToggle }: SidebarProps) {
     <div className="flex">
       <aside
         className={`
-          fixed top-0 left-0 h-screen
+          fixed top-0 left-0 h-dvh
           bg-white
           shadow-xl
           rounded-r-l

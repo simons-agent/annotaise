@@ -139,7 +139,7 @@ export default function LabelingBackgroundPage() {
     }
   }, [answers, labelingId, orderedSections, router, t]);
 
-  // <main> is h-screen overflow-hidden, so the page needs its own bounded,
+  // <main> is h-dvh overflow-hidden, so the page needs its own bounded,
   // scrollable content area (header fixed, form scrolls to the submit button).
   return (
     <div className="flex h-full flex-col overflow-hidden">

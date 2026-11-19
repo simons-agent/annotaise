@@ -18,7 +18,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
   return (
     <div
       className={`
-      grid h-screen bg-white
+      grid h-dvh bg-white
       transition-[grid-template-columns] duration-300
       ${
         isOpen
@@ -27,11 +27,11 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       }
     `}
     >
-      <div className="h-screen sticky top-0">
+      <div className="h-dvh sticky top-0">
         <Sidebar isOpen={isOpen} onToggle={toggle} />
       </div>
 
-      <main className="h-screen min-w-0 overflow-hidden">{children}</main>
+      <main className="h-dvh min-w-0 overflow-hidden">{children}</main>
     </div>
   );
 }

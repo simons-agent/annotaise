@@ -23,6 +23,7 @@ import ArrowLeftButton from '@/components/button/ArrowLeftButton';
 import ArrowRightButton from '@/components/button/ArrowRightButton';
 import GuidePanel from '@/components/answer/GuidePanel';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { NARROW_SCREEN_QUERY } from '@/components/side-bar/sidebar_provider';
 
 
 export default function LabelingAnswerPage() {
@@ -48,6 +49,18 @@ export default function LabelingAnswerPage() {
   // The annotation guide starts open by default so annotators see it without
   // having to look for it; the header button still lets them hide it.
   const [showGuide, setShowGuide] = useState(true);
+  // On a phone the guide would squeeze the record into a narrow column, so it
+  // starts hidden there and, when shown, stacks below the record.
+  const [isNarrowScreen, setIsNarrowScreen] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia?.(NARROW_SCREEN_QUERY);
+    if (!query) return;
+    setIsNarrowScreen(query.matches);
+    if (query.matches) setShowGuide(false);
+    const onChange = (event: MediaQueryListEvent) => setIsNarrowScreen(event.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -312,6 +325,18 @@ export default function LabelingAnswerPage() {
           <div className="flex justify-center items-center pt-2">
             <div />
             <div className="flex gap-3">
+              {/* On narrow screens the side arrows would cover the record, so they sit here instead. */}
+              {isEnabled ? (
+                <div className="flex gap-3 md:hidden">
+                  <ArrowLeftButton
+                    onPrevious={goToPreviousSection}
+                    disablePrevious={isFirstSection || isLoading || isSubmitting}
+                  />
+                  {!isLastSection ? (
+                    <ArrowRightButton onNext={goToNextSection} disableNext={isLoading || isSubmitting} />
+                  ) : null}
+                </div>
+              ) : null}
               {!isLastSection ? (
                   !isEnabled && (
                         <Button type="button" onClick={goToNextSection} disabled={isLoading || isSubmitting} fill={false}>
@@ -352,11 +377,15 @@ export default function LabelingAnswerPage() {
  
 
       <div className="flex-1 min-h-0 mt-4">
-        <ResizablePanelGroup direction="horizontal" className="h-full gap-3">
+        <ResizablePanelGroup
+          key={isNarrowScreen ? 'vertical' : 'horizontal'}
+          direction={isNarrowScreen ? 'vertical' : 'horizontal'}
+          className="h-full gap-3"
+        >
           <ResizablePanel id="answer" order={1} defaultSize={showGuide ? 70 : 100} minSize={30}>
           <div className="relative h-full">
             {isEnabled? (
-              <div>
+              <div className="hidden md:block">
                 <div className="absolute right-1 top-1/2 z-10 -translate-y-1/2">
                   <ArrowRightButton
                     onNext={goToNextSection}
