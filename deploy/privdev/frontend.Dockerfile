@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Deploy-only frontend image for the PrivDev AgentBox instances.
+# Deploy-only frontend image for the PrivDev instances.
 # Unlike the upstream frontend/Dockerfile (which installs and builds at
 # container start via run.sh), this installs from the lockfile and builds at
 # image build time; the container only runs `next start`.

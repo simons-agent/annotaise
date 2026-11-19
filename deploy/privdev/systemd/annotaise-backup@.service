@@ -1,8 +1,9 @@
 [Unit]
 Description=AnnotAISE pg_dump backup for %i
-Wants=docker.service
-After=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/srv/projects/annotaise/repo/deploy/privdev/backup.sh %i
+# Repository at ~/annotaise/repo (a symlink is fine). Optional overrides
+# (COMPOSE=podman compose, ANNOTAISE_BACKUP_ROOT=...) go in this file:
+EnvironmentFile=-%h/.config/annotaise/backup.env
+ExecStart=%h/annotaise/repo/deploy/privdev/backup.sh %i

@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly PrivDev Study 1 dataset export
+
+[Timer]
+# Local time of the host (03:30), after the 02:30 UTC database backups.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

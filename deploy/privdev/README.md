@@ -85,27 +85,50 @@ Containers: `annotaise-test-{db,api,frontend,gateway}-1` and
 
 ## Secrets and `.env`
 
-Secrets are only in the AgentBox secret store
-`/etc/agentbox/secrets/annotaise/{test,study}/` (root-only, mode 0700/0600) and
-in each instance's `deploy/privdev/<project>/.env` (mode 0600, git-ignored by the
-repository's `.env` rule; check with `git check-ignore -v`). Each instance has its
-own values for `annotaise-django-secret`, `annotaise-db-password`,
-`annotaise-superuser-password` and `annotaise-export-password`.
+Secrets live only in each instance's `deploy/privdev/<project>/.env` (mode 0600,
+git-ignored by the repository's `.env` rule; check with `git check-ignore -v`).
+`write-env.sh` generates random values on first run and keeps the existing ones
+on a rerun (so the database password is never rotated by accident). On AgentBox
+the values come from the root-only secret store instead: point
+`ANNOTAISE_SECRET_STORE` at it (one file per secret: `annotaise-django-secret`,
+`annotaise-db-password`, `annotaise-superuser-password`,
+`annotaise-export-password`).
 
-(Re)write an instance's `.env` from the store, giving its public URL and port:
+(Re)write an instance's `.env`, giving its public URL, the loopback port and the
+sender address for invitation e-mails:
 
 ```sh
-sudo deploy/privdev/write-env.sh annotaise-test  https://agentbox.tail289ef2.ts.net:9446/annotaise-test 8471
-sudo deploy/privdev/write-env.sh annotaise-study https://agentbox.tail289ef2.ts.net:8443/annotaise      8472
+# AgentBox
+ANNOTAISE_SECRET_STORE=/etc/agentbox/secrets/annotaise/test \
+  deploy/privdev/write-env.sh annotaise-test  https://agentbox.tail289ef2.ts.net:9446/annotaise-test 8471 --mail-user SENDER@gmail.com
+# any host
+deploy/privdev/write-env.sh annotaise-study https://study.example.org/annotaise 8472 \
+  --mail-user SENDER@gmail.com --mail-from "PrivDev Study <SENDER@gmail.com>"
 ```
 
 It derives `FRONTEND_URL`, `NEXT_PUBLIC_BASE_PATH`, `NEXT_PUBLIC_API_BASE_URL`,
 `DJANGO_FORCE_SCRIPT_NAME`, allowed hosts and CSRF origins from the URL and never
-prints a secret. The Django superuser is `admin@annotaise.invalid` (log in by
-email) with the instance's `annotaise-superuser-password`. To rotate a secret,
-replace its file in the store with a new CSPRNG value, rerun `write-env.sh` and
-restart the instance (the database password also has to be changed inside
-Postgres, since the image only applies it on first initialisation).
+prints a secret. The mail settings are `EMAIL_HOST=smtp.gmail.com`,
+`EMAIL_PORT=587`, `EMAIL_USE_TLS=True`; **`EMAIL_HOST_PASSWORD` is always left
+empty**: type the Gmail app password into the `.env` yourself and restart the api
+container (`dc restart api`). `ANNOTAISE_ENV_DIR` overrides the output directory.
+The Django superuser is `admin@annotaise.invalid` (log in by email). To rotate a
+secret, put a new random value in the `.env` and restart the instance (the
+database password also has to be changed inside Postgres, since the image only
+applies it on first initialisation).
+
+## Container runtime (Docker or Podman)
+
+Every script calls compose through `COMPOSE`, default `docker compose`:
+
+```sh
+export COMPOSE="podman compose"     # production: rootless Podman >= 4.9
+```
+
+`backup.sh` and `restore.sh` run `pg_dump`/`pg_restore` through
+`$COMPOSE ... exec -T db`, never a bare `docker`. AgentBox keeps Docker.
+`tests/test-portable.sh` fails if a bare `docker` call or an AgentBox-specific
+path creeps into the scripts.
 
 ## Start, stop, status
 
@@ -113,7 +136,7 @@ Run from the repository root; `P` is `annotaise-test` or `annotaise-study`.
 
 ```sh
 P=annotaise-study
-dc() { docker compose -p "$P" -f docker-compose.yaml -f deploy/privdev/compose.override.yaml \
+dc() { ${COMPOSE:-docker compose} -p "$P" -f docker-compose.yaml -f deploy/privdev/compose.override.yaml \
          --env-file "deploy/privdev/$P/.env" "$@"; }
 
 dc up -d --build     # first start, or rebuild + apply code/config changes
@@ -122,6 +145,11 @@ dc logs -f frontend  # "Ready in" a few seconds after a (re)start
 dc restart           # restart (no rebuild, no network install)
 dc stop; dc start    # stop / start again, keeping data
 ```
+
+Backend view tests (`manage.py test`) in the api container must be run with
+`-e DJANGO_FORCE_SCRIPT_NAME=` when the instance `.env` sets a script name, e.g.
+`dc exec -e DJANGO_FORCE_SCRIPT_NAME= api uv run manage.py test`; otherwise
+every reversed URL carries the `<mount>/backend` prefix and the tests fail.
 
 Never use `dc down -v`: it deletes the instance's database volume.
 
@@ -154,7 +182,8 @@ serving until the new image is built, so the outage is only the container swap.
 ## Backups
 
 `backup.sh <project>` runs `pg_dump -Fc` inside the instance's db container and
-writes `/srv/projects/annotaise/runtime/backups/<project>/<UTC timestamp>.dump`
+writes `$ANNOTAISE_BACKUP_ROOT/<project>/<UTC timestamp>.dump` (default
+`~/annotaise/backups`)
 (directory mode 0700; dumps contain personal data). It keeps the newest dump of
 each of the 14 most recent days and of each of the 8 most recent ISO weeks
 (`prune-backups.py`).
@@ -165,8 +194,11 @@ labelled dumps; delete them by hand. Use `--label predeploy` before every
 redeploy (see [Redeploy](#redeploy)). Offline test of label parsing and
 retention: `bash deploy/privdev/tests/test-backup.sh`.
 
-Nightly systemd user timers (02:30 UTC, `Persistent=true`; user lingering is
-enabled for `simon`) run it for both instances. Units live in `systemd/`:
+Nightly systemd user timers (02:30 UTC, `Persistent=true`; user lingering must
+be enabled) run it for both instances. The unit expects the repository at
+`~/annotaise/repo` (a symlink is fine) and reads optional overrides such as
+`COMPOSE=podman compose` from `~/.config/annotaise/backup.env`. Units live in
+`systemd/`:
 
 ```sh
 install -m 0644 deploy/privdev/systemd/annotaise-backup@.{service,timer} ~/.config/systemd/user/
@@ -180,7 +212,7 @@ systemctl --user start annotaise-backup@annotaise-study.service   # ad-hoc backu
 ## Restore
 
 ```sh
-deploy/privdev/restore.sh <project> /srv/projects/annotaise/runtime/backups/<project>/<stamp>.dump
+deploy/privdev/restore.sh <project> ~/annotaise/backups/<project>/<stamp>.dump
 ```
 
 Destructive: it stops the project, removes its Postgres volume, recreates an
@@ -214,3 +246,62 @@ agentctl unexpose annotaise --port 8443
 Never run `tailscale serve reset` / `tailscale funnel reset`. If a listener
 port ever changes, rerun `write-env.sh` with the new URL and rebuild the
 frontend (see "Rebuild" above), since the URL is baked into the frontend build.
+
+## Dataset timer
+
+`systemd/privdev-dataset.{service,timer}` run the PrivDev dataset builder
+(`uv run python -m privdev.annotation.dataset --labeling-a ID --labeling-b ID`)
+every night at 03:30 local time (`Persistent=true`). The service has two
+placeholders, filled in at install time: `@PRIVDEV_DIR@` (checkout of the PrivDev
+repository, the `WorkingDirectory`) and `@DATASET_ENV@` (an env file, mode 0600,
+with `LABELING_A=`, `LABELING_B=` and the export account variables the CLI reads).
+
+```sh
+sed -e "s#@PRIVDEV_DIR@#$HOME/privdev#" -e "s#@DATASET_ENV@#$HOME/.config/privdev/dataset.env#" \
+  deploy/privdev/systemd/privdev-dataset.service > ~/.config/systemd/user/privdev-dataset.service
+install -m 0644 deploy/privdev/systemd/privdev-dataset.timer ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now privdev-dataset.timer
+```
+
+## Fresh host (Ubuntu, rootless Podman)
+
+Target: an Ubuntu host (e.g. a Proxmox LXC container) with rootless Podman >= 4.9,
+`podman-compose` or the compose plugin, `uv`, and a reverse proxy that serves the
+instance at its public URL and forwards to `127.0.0.1:<port>`.
+
+```sh
+sudo loginctl enable-linger "$USER"        # user units keep running without a login
+export COMPOSE="podman compose"            # also put it in ~/.config/annotaise/backup.env
+systemctl --user enable --now podman.socket   # compose provider talks to the user socket
+
+# 1. clone
+git clone -b privdev/study1 https://github.com/<fork>/annotaise.git ~/annotaise/repo
+cd ~/annotaise/repo
+# 2. environment (public URL, loopback port, sender address)
+deploy/privdev/write-env.sh annotaise-study https://study.example.org/annotaise 8472 --mail-user SENDER@gmail.com
+# 3. start (first build takes several minutes); P and dc() as in "Start, stop, status"
+P=annotaise-study
+dc() { ${COMPOSE:-docker compose} -p "$P" -f docker-compose.yaml -f deploy/privdev/compose.override.yaml \
+         --env-file "deploy/privdev/$P/.env" "$@"; }
+dc up -d --build
+# 4. first backup
+deploy/privdev/backup.sh "$P" --label predeploy
+# 5. restore check into a scratch project: write a second .env as annotaise-test
+#    (other port), start it, restore the dump into it, and compare exports
+deploy/privdev/write-env.sh annotaise-test https://study.example.org/annotaise-test 8471
+# (start annotaise-test as in step 3), then:
+deploy/privdev/restore.sh annotaise-test ~/annotaise/backups/annotaise-study/<stamp>-predeploy.dump
+# 6. timers
+mkdir -p ~/.config/systemd/user
+install -m 0644 deploy/privdev/systemd/annotaise-backup@.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now annotaise-backup@annotaise-study.timer
+# ... and the dataset timer from "Dataset timer" above
+# 7. SMTP: edit deploy/privdev/annotaise-study/.env, set EMAIL_HOST_PASSWORD to the
+#    Gmail app password (type it; do not paste it into a shell history), then
+dc up -d api
+# 8. send a test invitation to yourself from the annotation UI and check it arrives
+```
+
+The restore check mutates only the scratch project; never point `restore.sh` at
+the live instance without a fresh `--label prerestore` backup.

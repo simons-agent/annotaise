@@ -1,4 +1,4 @@
-# PrivDev Study 1 deployment override for AgentBox.
+# PrivDev Study 1 deployment override.
 #
 # Used together with the upstream docker-compose.yaml, once per instance:
 #
@@ -8,7 +8,7 @@
 #
 # (deploy/privdev/README.md wraps this in a helper.) The project name gives
 # each instance its own containers, network and volumes. Each instance's .env
-# is written from the AgentBox secret store and is git-ignored.
+# is written by write-env.sh and is git-ignored.
 #
 # Topology per instance: one loopback port (GATEWAY_PORT) -> nginx gateway.
 # Tailscale Serve/Funnel mounts the instance at NEXT_PUBLIC_BASE_PATH and strips

@@ -6,13 +6,16 @@
 #   deploy/privdev/backup.sh annotaise-study --label predeploy   # before a redeploy
 #
 # Writes `pg_dump -Fc` to
-#   /srv/projects/annotaise/runtime/backups/<project>/<UTC timestamp>.dump
+#   $ANNOTAISE_BACKUP_ROOT/<project>/<UTC timestamp>.dump
+# (default root: ~/annotaise/backups)
 # (or <UTC timestamp>-<label>.dump with --label) and prunes old unlabelled
 # dumps, keeping the newest dump of each of the 14 most recent days and the
 # newest dump of each of the 8 most recent ISO weeks. Labelled dumps are never
 # pruned (see prune-backups.py); delete them by hand when no longer needed.
 # No credentials are needed on the host: pg_dump runs inside the db container
 # over its local socket, using the container's POSTGRES_USER / POSTGRES_DB.
+# Container access goes through $COMPOSE (default "docker compose"; set
+# COMPOSE="podman compose" on a Podman host).
 set -euo pipefail
 umask 077
 
@@ -35,15 +38,17 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-backup_root="${ANNOTAISE_BACKUP_ROOT:-/srv/projects/annotaise/runtime/backups}"
+backup_root="${ANNOTAISE_BACKUP_ROOT:-$HOME/annotaise/backups}"
 dir="$backup_root/$project"
 keep_daily="${KEEP_DAILY:-14}"
 keep_weekly="${KEEP_WEEKLY:-8}"
 
-container="$(docker ps -q \
-  --filter "label=com.docker.compose.project=$project" \
-  --filter "label=com.docker.compose.service=db")"
-[ -n "$container" ] || { echo "no running db container for $project" >&2; exit 1; }
+read -r -a COMPOSE_CMD <<< "${COMPOSE:-docker compose}"
+repo="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
+compose=("${COMPOSE_CMD[@]}" -p "$project" --project-directory "$repo"
+  -f "$repo/docker-compose.yaml" -f "$repo/deploy/privdev/compose.override.yaml"
+  --env-file "$repo/deploy/privdev/$project/.env")
+[ -n "$("${compose[@]}" ps -q db 2>/dev/null)" ] || { echo "no running db container for $project" >&2; exit 1; }
 
 mkdir -p "$dir"
 chmod 0700 "$dir"
@@ -52,10 +57,10 @@ out="$dir/$stamp${label:+-$label}.dump"
 tmp="$dir/.$stamp.dump.partial"
 
 trap 'rm -f "$tmp"' EXIT
-docker exec "$container" sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$tmp"
+"${compose[@]}" exec -T db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$tmp"
 # Sanity check: a custom-format dump starts with "PGDMP" and lists its TOC.
 [ "$(head -c 5 "$tmp")" = "PGDMP" ] || { echo "dump is not custom format" >&2; exit 1; }
-docker exec -i "$container" pg_restore --list < "$tmp" > /dev/null
+"${compose[@]}" exec -T db pg_restore --list < "$tmp" > /dev/null
 mv "$tmp" "$out"
 trap - EXIT
 echo "backup $project -> $out ($(stat -c %s "$out") bytes)"

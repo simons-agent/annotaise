@@ -1,0 +1,12 @@
+[Unit]
+Description=PrivDev Study 1 dataset export (pull both labelings, build the annotation dataset)
+
+[Service]
+Type=oneshot
+# Placeholders are filled in when the unit is installed (see README, "Fresh host"):
+#   @PRIVDEV_DIR@   checkout of the PrivDev repository (where `uv run` finds the project)
+#   @DATASET_ENV@   file with the labeling IDs and the export account, mode 0600
+WorkingDirectory=@PRIVDEV_DIR@
+EnvironmentFile=@DATASET_ENV@
+# The env file sets LABELING_A, LABELING_B and the export account variables.
+ExecStart=/usr/bin/env uv run python -m privdev.annotation.dataset --labeling-a ${LABELING_A} --labeling-b ${LABELING_B}
