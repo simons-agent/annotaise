@@ -7,7 +7,7 @@
 #
 # Writes `pg_dump -Fc` to
 #   $ANNOTAISE_BACKUP_ROOT/<project>/<UTC timestamp>.dump
-# (default root: ~/annotaise/backups)
+# (ANNOTAISE_BACKUP_ROOT is required; there is no default)
 # (or <UTC timestamp>-<label>.dump with --label) and prunes old unlabelled
 # dumps, keeping the newest dump of each of the 14 most recent days and the
 # newest dump of each of the 8 most recent ISO weeks. Labelled dumps are never
@@ -15,7 +15,7 @@
 # No credentials are needed on the host: pg_dump runs inside the db container
 # over its local socket, using the container's POSTGRES_USER / POSTGRES_DB.
 # Container access goes through $COMPOSE (default "docker compose"; set
-# COMPOSE="podman compose" on a Podman host).
+# COMPOSE="podman compose" on a Podman host; it must be "<engine> compose").
 set -euo pipefail
 umask 077
 
@@ -38,7 +38,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-backup_root="${ANNOTAISE_BACKUP_ROOT:-$HOME/annotaise/backups}"
+backup_root="${ANNOTAISE_BACKUP_ROOT:-}"
+[ -n "$backup_root" ] || { echo "ANNOTAISE_BACKUP_ROOT is not set (directory that holds <project>/*.dump)" >&2; exit 2; }
 dir="$backup_root/$project"
 keep_daily="${KEEP_DAILY:-14}"
 keep_weekly="${KEEP_WEEKLY:-8}"
@@ -48,7 +49,7 @@ repo="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
 compose=("${COMPOSE_CMD[@]}" -p "$project" --project-directory "$repo"
   -f "$repo/docker-compose.yaml" -f "$repo/deploy/privdev/compose.override.yaml"
   --env-file "$repo/deploy/privdev/$project/.env")
-[ -n "$("${compose[@]}" ps -q db 2>/dev/null)" ] || { echo "no running db container for $project" >&2; exit 1; }
+[ -n "$("${compose[@]}" ps -q db)" ] || { echo "no running db container for $project" >&2; exit 1; }
 
 mkdir -p "$dir"
 chmod 0700 "$dir"

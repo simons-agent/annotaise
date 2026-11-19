@@ -108,10 +108,12 @@ deploy/privdev/write-env.sh annotaise-study https://study.example.org/annotaise 
 
 It derives `FRONTEND_URL`, `NEXT_PUBLIC_BASE_PATH`, `NEXT_PUBLIC_API_BASE_URL`,
 `DJANGO_FORCE_SCRIPT_NAME`, allowed hosts and CSRF origins from the URL and never
-prints a secret. The mail settings are `EMAIL_HOST=smtp.gmail.com`,
-`EMAIL_PORT=587`, `EMAIL_USE_TLS=True`; **`EMAIL_HOST_PASSWORD` is always left
-empty**: type the Gmail app password into the `.env` yourself and restart the api
-container (`dc restart api`). `ANNOTAISE_ENV_DIR` overrides the output directory.
+prints a secret. The mail settings are `EMAIL_HOST=smtp.gmail.com` and
+`EMAIL_PORT=587` (TLS is always on: `settings.py` hardcodes it, so
+`EMAIL_USE_TLS` in the `.env` is informational only). **`EMAIL_HOST_PASSWORD` is
+never generated and starts empty**: type the Gmail app password into the `.env`
+yourself and restart the api container (`dc restart api`); a rerun of
+`write-env.sh` keeps the value you set. `ANNOTAISE_ENV_DIR` overrides the output directory.
 The Django superuser is `admin@annotaise.invalid` (log in by email). To rotate a
 secret, put a new random value in the `.env` and restart the instance (the
 database password also has to be changed inside Postgres, since the image only
@@ -119,7 +121,9 @@ applies it on first initialisation).
 
 ## Container runtime (Docker or Podman)
 
-Every script calls compose through `COMPOSE`, default `docker compose`:
+Every script calls compose through `COMPOSE`, default `docker compose`. It must
+be of the form `<engine> compose` (`restore.sh` takes the engine from the first
+word for `volume rm`):
 
 ```sh
 export COMPOSE="podman compose"     # production: rootless Podman >= 4.9
@@ -182,8 +186,7 @@ serving until the new image is built, so the outage is only the container swap.
 ## Backups
 
 `backup.sh <project>` runs `pg_dump -Fc` inside the instance's db container and
-writes `$ANNOTAISE_BACKUP_ROOT/<project>/<UTC timestamp>.dump` (default
-`~/annotaise/backups`)
+writes `$ANNOTAISE_BACKUP_ROOT/<project>/<UTC timestamp>.dump` (set `ANNOTAISE_BACKUP_ROOT`; there is no default)
 (directory mode 0700; dumps contain personal data). It keeps the newest dump of
 each of the 14 most recent days and of each of the 8 most recent ISO weeks
 (`prune-backups.py`).
@@ -194,14 +197,20 @@ labelled dumps; delete them by hand. Use `--label predeploy` before every
 redeploy (see [Redeploy](#redeploy)). Offline test of label parsing and
 retention: `bash deploy/privdev/tests/test-backup.sh`.
 
+`backup.sh` and `restore.sh` **require `ANNOTAISE_BACKUP_ROOT`** (the directory
+that holds `<project>/*.dump`) and exit with an error when it is unset.
+
 Nightly systemd user timers (02:30 UTC, `Persistent=true`; user lingering must
-be enabled) run it for both instances. The unit expects the repository at
-`~/annotaise/repo` (a symlink is fine) and reads optional overrides such as
-`COMPOSE=podman compose` from `~/.config/annotaise/backup.env`. Units live in
-`systemd/`:
+be enabled) run it for both instances. The service has two install-time
+placeholders: `@REPO_DIR@` (this checkout) and `@BACKUP_ENV@` (an env file that
+sets `ANNOTAISE_BACKUP_ROOT=...` and optionally `COMPOSE=podman compose`).
 
 ```sh
-install -m 0644 deploy/privdev/systemd/annotaise-backup@.{service,timer} ~/.config/systemd/user/
+mkdir -p ~/.config/systemd/user ~/.config/annotaise
+printf 'ANNOTAISE_BACKUP_ROOT=%s\n' "$HOME/annotaise/backups" > ~/.config/annotaise/backup.env
+sed -e "s#@REPO_DIR@#$PWD#" -e "s#@BACKUP_ENV@#$HOME/.config/annotaise/backup.env#" \
+  deploy/privdev/systemd/annotaise-backup@.service > ~/.config/systemd/user/annotaise-backup@.service
+install -m 0644 deploy/privdev/systemd/annotaise-backup@.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now annotaise-backup@annotaise-test.timer annotaise-backup@annotaise-study.timer
 systemctl --user list-timers 'annotaise-backup@*'
@@ -209,10 +218,18 @@ journalctl --user -u 'annotaise-backup@*'          # results
 systemctl --user start annotaise-backup@annotaise-study.service   # ad-hoc backup
 ```
 
+**Existing installs** (units installed before this change hard-coded the repo
+path): set `ANNOTAISE_BACKUP_ROOT` before the next run, in the shell for manual
+runs and in the unit for the timer. On AgentBox the installed unit is left as is
+and the root is pinned by a host drop-in,
+`~/.config/systemd/user/annotaise-backup@.service.d/backup-root.conf`, containing
+`[Service]` / `Environment=ANNOTAISE_BACKUP_ROOT=/srv/projects/annotaise/runtime/backups`;
+for manual runs there use `export ANNOTAISE_BACKUP_ROOT=/srv/projects/annotaise/runtime/backups`.
+
 ## Restore
 
 ```sh
-deploy/privdev/restore.sh <project> ~/annotaise/backups/<project>/<stamp>.dump
+deploy/privdev/restore.sh <project> "$ANNOTAISE_BACKUP_ROOT"/<project>/<stamp>.dump
 ```
 
 Destructive: it stops the project, removes its Postgres volume, recreates an
@@ -271,7 +288,8 @@ instance at its public URL and forwards to `127.0.0.1:<port>`.
 
 ```sh
 sudo loginctl enable-linger "$USER"        # user units keep running without a login
-export COMPOSE="podman compose"            # also put it in ~/.config/annotaise/backup.env
+export COMPOSE="podman compose"
+export ANNOTAISE_BACKUP_ROOT="$HOME/annotaise/backups"   # both also go in ~/.config/annotaise/backup.env
 systemctl --user enable --now podman.socket   # compose provider talks to the user socket
 
 # 1. clone
@@ -290,13 +308,11 @@ deploy/privdev/backup.sh "$P" --label predeploy
 #    (other port), start it, restore the dump into it, and compare exports
 deploy/privdev/write-env.sh annotaise-test https://study.example.org/annotaise-test 8471
 # (start annotaise-test as in step 3), then:
-deploy/privdev/restore.sh annotaise-test ~/annotaise/backups/annotaise-study/<stamp>-predeploy.dump
+deploy/privdev/restore.sh annotaise-test "$ANNOTAISE_BACKUP_ROOT"/annotaise-study/<stamp>-predeploy.dump
 # 6. timers
 mkdir -p ~/.config/systemd/user
-install -m 0644 deploy/privdev/systemd/annotaise-backup@.{service,timer} ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now annotaise-backup@annotaise-study.timer
-# ... and the dataset timer from "Dataset timer" above
+# install the backup timer as in "Backups" (needs ~/.config/annotaise/backup.env)
+# and the dataset timer from "Dataset timer" above
 # 7. SMTP: edit deploy/privdev/annotaise-study/.env, set EMAIL_HOST_PASSWORD to the
 #    Gmail app password (type it; do not paste it into a shell history), then
 dc up -d api

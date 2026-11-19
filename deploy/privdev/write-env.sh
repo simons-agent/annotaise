@@ -15,7 +15,8 @@
 # existing .env (so a rerun never rotates the database password), else
 # generated randomly. The file is created mode 0600 and is git-ignored. No
 # secret value is printed. EMAIL_HOST_PASSWORD is always left empty: the
-# operator types the SMTP app password into the .env afterwards.
+# operator types the SMTP app password into the .env afterwards; a rerun keeps
+# that hand-set value.
 set -euo pipefail
 umask 077
 
@@ -90,14 +91,15 @@ trap 'rm -f "$tmp"' EXIT
   echo "FRONTEND_URL=$public_url"
   echo "NEXT_PUBLIC_BASE_PATH=$base_path"
   echo "NEXT_PUBLIC_API_BASE_URL=$public_url/backend"
-  echo "# Invitation e-mail (Gmail SMTP)."
+  echo "# Invitation e-mail (Gmail SMTP). settings.py always enables TLS; EMAIL_USE_TLS is informational."
   echo "# OPERATOR: set EMAIL_HOST_PASSWORD below to the account's app password by"
-  echo "# hand, then restart the api container. It is never written by this script."
+  echo "# hand, then restart the api container. This script never generates it, but a
+# rerun keeps the value you set."
   echo "EMAIL_HOST=smtp.gmail.com"
   echo "EMAIL_PORT=587"
   echo "EMAIL_USE_TLS=True"
   echo "EMAIL_HOST_USER=$mail_user"
-  echo "EMAIL_HOST_PASSWORD="
+  echo "EMAIL_HOST_PASSWORD=$(old EMAIL_HOST_PASSWORD)"
   echo "DEFAULT_FROM_EMAIL=$mail_from"
 } > "$tmp"
 chmod 0600 "$tmp"

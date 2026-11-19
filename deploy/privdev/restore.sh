@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Restore one AnnotAISE instance's database from a backup.sh dump.
 #
-#   deploy/privdev/restore.sh annotaise-test ~/annotaise/backups/annotaise-test/<stamp>.dump
+#   deploy/privdev/restore.sh annotaise-test "$ANNOTAISE_BACKUP_ROOT"/annotaise-test/<stamp>.dump
 #
 # DESTRUCTIVE: stops the stack, removes the instance's Postgres volume,
 # recreates an empty database and loads the dump with pg_restore, then starts
 # the whole stack again. Uses $COMPOSE (default "docker compose"; e.g.
-# COMPOSE="podman compose"). Take a fresh backup.sh first if the current data matter.
+# COMPOSE="podman compose"; it must be "<engine> compose"). Requires
+# ANNOTAISE_BACKUP_ROOT (same value as for backup.sh). Take a fresh backup.sh first if the current data matter.
 set -euo pipefail
 
 project="${1:?usage: restore.sh <annotaise-test|annotaise-study> <dump>}"
@@ -15,6 +16,7 @@ case "$project" in
   annotaise-test|annotaise-study) ;;
   *) echo "unknown project: $project" >&2; exit 2 ;;
 esac
+[ -n "${ANNOTAISE_BACKUP_ROOT:-}" ] || { echo "ANNOTAISE_BACKUP_ROOT is not set" >&2; exit 2; }
 [ -f "$dump" ] || { echo "no such dump: $dump" >&2; exit 2; }
 [ "$(head -c 5 "$dump")" = "PGDMP" ] || { echo "not a custom-format dump: $dump" >&2; exit 2; }
 

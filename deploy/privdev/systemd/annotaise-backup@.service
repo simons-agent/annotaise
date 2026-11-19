@@ -3,7 +3,8 @@ Description=AnnotAISE pg_dump backup for %i
 
 [Service]
 Type=oneshot
-# Repository at ~/annotaise/repo (a symlink is fine). Optional overrides
-# (COMPOSE=podman compose, ANNOTAISE_BACKUP_ROOT=...) go in this file:
-EnvironmentFile=-%h/.config/annotaise/backup.env
-ExecStart=%h/annotaise/repo/deploy/privdev/backup.sh %i
+# Install-time placeholders (see README): @REPO_DIR@ is the checkout, and
+# @BACKUP_ENV@ is a file that must set ANNOTAISE_BACKUP_ROOT (required) and may
+# set COMPOSE (e.g. COMPOSE=podman compose).
+EnvironmentFile=@BACKUP_ENV@
+ExecStart=@REPO_DIR@/deploy/privdev/backup.sh %i

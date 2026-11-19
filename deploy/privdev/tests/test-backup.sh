@@ -27,6 +27,9 @@ check "unknown option is rejected (exit 2)" \
 check "unknown project is rejected (exit 2)" \
   test "$(status bash "$backup" nope --label predeploy)" = 2
 
+check "missing ANNOTAISE_BACKUP_ROOT is rejected (exit 2)" \
+  test "$(status env -u ANNOTAISE_BACKUP_ROOT bash "$backup" annotaise-test)" = 2
+
 # --- retention: same-day dumps pruned, labelled dumps never ---
 dir="$work/annotaise-study"
 mkdir -p "$dir"

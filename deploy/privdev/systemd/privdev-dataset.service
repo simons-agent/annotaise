@@ -6,6 +6,7 @@ Type=oneshot
 # Placeholders are filled in when the unit is installed (see README, "Fresh host"):
 #   @PRIVDEV_DIR@   checkout of the PrivDev repository (where `uv run` finds the project)
 #   @DATASET_ENV@   file with the labeling IDs and the export account, mode 0600
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=@PRIVDEV_DIR@
 EnvironmentFile=@DATASET_ENV@
 # The env file sets LABELING_A, LABELING_B and the export account variables.

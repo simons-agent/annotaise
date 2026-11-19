@@ -17,7 +17,7 @@ check() {  # check <description> <command...>
 
 # --- no AgentBox specifics in tracked files (README examples and the
 #     container-internal /srv/static path of the gateway are exempt) ---
-scan() {
+scan() (
   cd "$here"
   local f hits=1
   while IFS= read -r f; do
@@ -27,7 +27,7 @@ scan() {
     fi
   done < <(git ls-files -c -o --exclude-standard . | sort -u)
   [ "$hits" = 1 ]
-}
+)
 check "no /srv/, agentbox or tailnet name outside README" scan
 
 # --- compose and exec only through $COMPOSE ---
@@ -63,6 +63,20 @@ check "rerun keeps existing secrets" test "$(grep '^DJANGO_DB_PASS=' "$envf")" =
 check "rerun keeps mail settings" grep -qx 'EMAIL_HOST_USER=sender@example.org' "$envf"
 check "study hides admin" bash -c "ANNOTAISE_ENV_DIR='$work/s' bash '$here/write-env.sh' annotaise-study https://lab.example.org/annotaise 8472 >/dev/null && grep -qx GATEWAY_HIDE_ADMIN=1 '$work/s/.env'"
 
+sed -i 's/^EMAIL_HOST_PASSWORD=.*/EMAIL_HOST_PASSWORD=hand-set-value/' "$envf"
+ANNOTAISE_ENV_DIR="$envdir" bash "$here/write-env.sh" annotaise-test \
+  https://lab.example.org/annotaise-test 8471 >/dev/null
+check "rerun keeps a hand-set SMTP password" grep -qx 'EMAIL_HOST_PASSWORD=hand-set-value' "$envf"
+
+# --- backup root is required (no silent default) ---
+rc() { set +e; "$@" >/dev/null 2>&1; local s=$?; set -e; echo "$s"; }
+check "backup.sh without ANNOTAISE_BACKUP_ROOT fails" \
+  test "$(rc env -u ANNOTAISE_BACKUP_ROOT bash "$here/backup.sh" annotaise-test)" = 2
+check "restore.sh without ANNOTAISE_BACKUP_ROOT fails" \
+  test "$(rc env -u ANNOTAISE_BACKUP_ROOT bash "$here/restore.sh" annotaise-test /dev/null)" = 2
+check "backup unit reads the root from an EnvironmentFile" \
+  grep -qE '^EnvironmentFile=@[A-Z_]+@' "$here/systemd/annotaise-backup@.service"
+
 # --- dataset timer units ---
 svc="$here/systemd/privdev-dataset.service"
 tim="$here/systemd/privdev-dataset.timer"
@@ -71,6 +85,7 @@ check "service runs the dataset CLI" grep -q 'uv run python -m privdev.annotatio
 check "service WorkingDirectory is a parameter" grep -qE '^WorkingDirectory=@[A-Z_]+@' "$svc"
 check "service EnvironmentFile is a parameter" grep -qE '^EnvironmentFile=@[A-Z_]+@' "$svc"
 check "timer fires nightly at 03:30 local" grep -qFx 'OnCalendar=*-*-* 03:30:00' "$tim"
+check "service PATH includes ~/.local/bin (uv)" grep -q '^Environment=PATH=%h/.local/bin' "$svc"
 check "timer is persistent" grep -qx 'Persistent=true' "$tim"
 
 exit "$fail"
