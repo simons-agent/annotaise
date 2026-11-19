@@ -269,12 +269,21 @@ frontend (see "Rebuild" above), since the URL is baked into the frontend build.
 `systemd/privdev-dataset.{service,timer}` run the PrivDev dataset builder
 (`uv run python -m privdev.annotation.dataset --labeling-a ID --labeling-b ID`)
 every night at 03:30 local time (`Persistent=true`). The service has two
-placeholders, filled in at install time: `@PRIVDEV_DIR@` (checkout of the PrivDev
-repository, the `WorkingDirectory`) and `@DATASET_ENV@` (an env file, mode 0600,
-with `LABELING_A=`, `LABELING_B=` and the export account variables the CLI reads).
+placeholders, filled in at install time: `@PRIVDEV_MAPPINGS_DIR@` (the
+`privdev-mappings` directory of the PrivDev checkout, where `pyproject.toml`
+lives; the `WorkingDirectory`) and `@DATASET_ENV@` (an env file, mode 0600).
+The env file sets:
+
+| Variable | Value |
+|---|---|
+| `LABELING_A` | AnnotAISE labeling ID of part A (starting part) |
+| `LABELING_B` | labeling ID of part B (main part); leave empty before part B exists (`--labeling-b` is then left out) |
+| `ANNOTAISE_URL` | the backend base, `<public-url>/backend` |
+| `ANNOTAISE_EXPORT_EMAIL` | export account e-mail |
+| `ANNOTAISE_EXPORT_PASSWORD` | export account password |
 
 ```sh
-sed -e "s#@PRIVDEV_DIR@#$HOME/privdev#" -e "s#@DATASET_ENV@#$HOME/.config/privdev/dataset.env#" \
+sed -e "s#@PRIVDEV_MAPPINGS_DIR@#$HOME/privdev/privdev-mappings#" -e "s#@DATASET_ENV@#$HOME/.config/privdev/dataset.env#" \
   deploy/privdev/systemd/privdev-dataset.service > ~/.config/systemd/user/privdev-dataset.service
 install -m 0644 deploy/privdev/systemd/privdev-dataset.timer ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now privdev-dataset.timer

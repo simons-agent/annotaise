@@ -3,11 +3,18 @@ Description=PrivDev Study 1 dataset export (pull both labelings, build the annot
 
 [Service]
 Type=oneshot
-# Placeholders are filled in when the unit is installed (see README, "Fresh host"):
-#   @PRIVDEV_DIR@   checkout of the PrivDev repository (where `uv run` finds the project)
-#   @DATASET_ENV@   file with the labeling IDs and the export account, mode 0600
+# Placeholders are filled in when the unit is installed (see README, "Dataset timer"):
+#   @PRIVDEV_MAPPINGS_DIR@   the privdev-mappings directory of the PrivDev checkout
+#                            (where pyproject.toml lives, so `uv run` finds the project)
+#   @DATASET_ENV@            env file, mode 0600, with the variables below
+# Variables of the env file:
+#   LABELING_A                 AnnotAISE labeling ID of part A (starting part)
+#   LABELING_B                 AnnotAISE labeling ID of part B (main part); may be empty
+#                              before part B exists, then --labeling-b is left out
+#   ANNOTAISE_URL              the backend base, <public-url>/backend
+#   ANNOTAISE_EXPORT_EMAIL     export account e-mail
+#   ANNOTAISE_EXPORT_PASSWORD  export account password
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-WorkingDirectory=@PRIVDEV_DIR@
+WorkingDirectory=@PRIVDEV_MAPPINGS_DIR@
 EnvironmentFile=@DATASET_ENV@
-# The env file sets LABELING_A, LABELING_B and the export account variables.
-ExecStart=/usr/bin/env uv run python -m privdev.annotation.dataset --labeling-a ${LABELING_A} --labeling-b ${LABELING_B}
+ExecStart=/bin/sh -c 'exec uv run python -m privdev.annotation.dataset --labeling-a "$LABELING_A" ${LABELING_B:+--labeling-b $LABELING_B}'
