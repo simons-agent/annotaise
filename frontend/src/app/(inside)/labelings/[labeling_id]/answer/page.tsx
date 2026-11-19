@@ -15,6 +15,7 @@ import {
 } from '@/components/context-question';
 import { useTranslations } from '@/i18n/use-translations';
 import { fetchLabelingById, fetchNextAnswer, submitAnswer } from '@/modules/labelings/labelingService';
+import { nextLabelingRedirect } from './nextLabeling';
 import type { LabelingStructureSection } from '@/modules/labelings/labelingsTypes';
 
 import InnerPageHeader from '@/components/InnerPageHeader';
@@ -114,6 +115,7 @@ export default function LabelingAnswerPage() {
     setLoadError(null);
     setLoadErrorCode(null);
     setSubmitMessage(null);
+    let redirecting = false;
 
     try {
       // The header and guide are labeling-level data; the answer form is item-level data.
@@ -138,6 +140,16 @@ export default function LabelingAnswerPage() {
       setRowIndex(null);
       setSections([]);
 
+      if (axios.isAxiosError(error)) {
+        // Joined labelings: continue straight into the next one, no thank-you flash.
+        const target = nextLabelingRedirect(error.response?.data);
+        if (target) {
+          redirecting = true;
+          router.replace(target);
+          return;
+        }
+      }
+
       let message = t('answer.loadError');
       let code: string | null = null;
 
@@ -161,9 +173,9 @@ export default function LabelingAnswerPage() {
 
       showError(message, code);
     } finally {
-      setIsLoading(false);
+      if (!redirecting) setIsLoading(false);
     }
-  }, [labelingId, showError, t]);
+  }, [labelingId, router, showError, t]);
 
   useEffect(() => {
     if (Object.is(loadedLabelingIdRef.current, labelingId)) return;

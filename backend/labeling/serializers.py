@@ -15,8 +15,19 @@ class LabelingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Labeling
-        fields = ['id', 'project', 'title', 'created_at','status','column_names','start_date','final_date','users_per_item','block_section_back','has_background_form','guide','decision','decision_mode','decisive_question','distribution_strategy','form_mode','anonymous_token','anonymous_url','items_per_group']
+        fields = ['id', 'project', 'title', 'created_at','status','column_names','start_date','final_date','users_per_item','block_section_back','has_background_form','guide','decision','decision_mode','decisive_question','distribution_strategy','form_mode','anonymous_token','anonymous_url','items_per_group','next_labeling']
         read_only_fields = ['id', 'created_at','created_by','column_names','status','anonymous_token','anonymous_url']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        nxt = attrs.get("next_labeling")
+        if nxt is not None:
+            if self.instance is not None and nxt.pk == self.instance.pk:
+                raise serializers.ValidationError({"next_labeling": "Uma rotulação não pode apontar para si mesma."})
+            project = attrs.get("project", self.instance.project if self.instance else None)
+            if nxt.project_id != getattr(project, "pk", project):
+                raise serializers.ValidationError({"next_labeling": "A próxima rotulação deve ser do mesmo projeto."})
+        return attrs
 
     def create(self, validated_data):
         if not validated_data.get("start_date"):

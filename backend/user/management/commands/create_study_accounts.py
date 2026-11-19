@@ -27,8 +27,13 @@ class Command(BaseCommand):
         parser.add_argument("--input", required=True, help="CSV: email,pseudonym,group")
         parser.add_argument("--project", required=True, type=int)
         parser.add_argument("--labelings", required=True, help="Comma-separated labeling ids")
-        parser.add_argument("--out", required=True, help="Output CSV with new/reset passwords")
+        parser.add_argument("--out", help="Output CSV with new/reset passwords (required unless --existing-only)")
         parser.add_argument("--reset", action="store_true", help="Reset passwords of existing users")
+        parser.add_argument(
+            "--existing-only", action="store_true",
+            help="Only update users that already exist (looked up by e-mail, e.g. invited): "
+                 "set group and memberships; never touch passwords, write no --out file",
+        )
         parser.add_argument("--overwrite", action="store_true", help="Delete an existing --out file first")
 
     def handle(self, *args, **opts):
@@ -47,7 +52,23 @@ class Command(BaseCommand):
         if {l.pk for l in labelings} != set(lab_ids):
             raise CommandError("Every labeling must exist and belong to --project")
 
+        if opts["existing_only"]:
+            if opts["out"] or opts["reset"]:
+                raise CommandError("--existing-only cannot be combined with --out or --reset")
+            User = get_user_model()
+            missing = [
+                r["email"] for r in rows if not User.objects.filter(email__iexact=r["email"]).exists()
+            ]
+            if missing:
+                raise CommandError(f"{len(missing)} user(s) from the input do not exist; nothing changed")
+            with transaction.atomic():
+                counts = self._provision(rows, project, labelings, False, None)
+            self.stdout.write("created={created} updated={updated} reset={reset}".format(**counts))
+            return
+
         out_path = opts["out"]
+        if not out_path:
+            raise CommandError("--out is required unless --existing-only is given")
         if opts["overwrite"] and os.path.lexists(out_path):
             os.unlink(out_path)
         try:

@@ -41,6 +41,10 @@ class Labeling(models.Model):
 
     guide = models.TextField(default="",blank=True)
     form_mode = models.BooleanField(default=False)
+    # Study 1: when a form_mode labeling is finished, annotators continue in this one.
+    next_labeling = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="previous_labelings"
+    )
 
     users_per_item = models.PositiveIntegerField(null=False, blank=False,default=1)
     block_section_back = models.BooleanField(default=False)

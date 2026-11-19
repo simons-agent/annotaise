@@ -1261,3 +1261,37 @@ class EditDashboardFolderFilterTest(TestCase):
         response = client.get(reverse("labelings-editdashboard"), {"project": ""})
         rows = {row["labeling_name"]: row["project_name"] for row in response.data["results"]}
         self.assertIsNone(rows["No project"])
+
+
+class NextLabelingValidationTest(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="nlv_owner", email="nlv_owner@example.com", password="x")
+        self.project = Project.objects.create(name="NLV", created_by=self.owner)
+        self.other_project = Project.objects.create(name="NLV2", created_by=self.owner)
+        self.a = self._labeling(self.project, "A")
+        self.b = self._labeling(self.project, "B")
+        self.c = self._labeling(self.other_project, "C")
+
+    def _labeling(self, project, title):
+        return Labeling.objects.create(
+            project=project, title=title, created_by=self.owner,
+            start_date=timezone.now().date(), final_date=timezone.now().date(),
+        )
+
+    def _data(self, **extra):
+        return {"project": self.project.id, "title": "X", "final_date": "2030-01-01", **extra}
+
+    def test_same_project_accepted(self):
+        s = LabelingSerializer(data=self._data(next_labeling=self.b.id))
+        self.assertTrue(s.is_valid(), s.errors)
+
+    def test_next_labeling_other_project_rejected(self):
+        s = LabelingSerializer(data=self._data(next_labeling=self.c.id))
+        self.assertFalse(s.is_valid())
+        self.assertIn("next_labeling", s.errors)
+
+    def test_next_labeling_self_rejected(self):
+        s = LabelingSerializer(self.a, data=self._data(next_labeling=self.a.id), partial=True)
+        self.assertFalse(s.is_valid())
+        self.assertIn("next_labeling", s.errors)

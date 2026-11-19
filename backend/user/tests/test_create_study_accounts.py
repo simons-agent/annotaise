@@ -199,3 +199,44 @@ class CreateStudyAccountsTests(StudyAccountsBase):
         self.assertEqual(
             exp.get(f"/labelings/{self.lab_a.id}/background-answers/").status_code, 200
         )
+
+
+class ExistingOnlyTests(StudyAccountsBase):
+    def run_existing(self, rows=ROWS, **opts):
+        stdout = StringIO()
+        call_command(
+            "create_study_accounts",
+            input=self.write_input(rows),
+            project=self.project.id,
+            labelings=f"{self.lab_a.id},{self.lab_b.id}",
+            existing_only=True,
+            stdout=stdout,
+            **opts,
+        )
+        return stdout.getvalue()
+
+    def test_existing_only_sets_group_and_memberships_keeps_password(self):
+        users = {}
+        for email, _, _ in ROWS:
+            users[email] = User.objects.create_user(username=email, email=email, password="invited-pw")
+        out = self.run_existing()
+        self.assertEqual(out.strip(), "created=0 updated=2 reset=0")
+        for email, pseudonym, group in ROWS:
+            u = User.objects.get(email=email)
+            self.assertTrue(u.check_password("invited-pw"))
+            self.assertEqual(
+                list(UserGroupMembership.objects.filter(user=u).values_list("group__name", flat=True)),
+                [group],
+            )
+            self.assertTrue(ProjectMembership.objects.filter(project=self.project, user=u).exists())
+            for lab in (self.lab_a, self.lab_b):
+                self.assertTrue(LabelingMembership.objects.filter(user=u, labeling=lab).exists())
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_existing_only_missing_user_fails(self):
+        User.objects.create_user(username="a", email=ROWS[0][0], password="x")
+        with self.assertRaises(CommandError):
+            self.run_existing()
+        u = User.objects.get(email=ROWS[0][0])
+        self.assertFalse(UserGroupMembership.objects.filter(user=u).exists())
+        self.assertFalse(User.objects.filter(email=ROWS[1][0]).exists())

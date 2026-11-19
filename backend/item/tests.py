@@ -295,3 +295,73 @@ class AnnotatorCannotReadItemVoteCountsTest(TestCase):
         self.assertEqual(self._get(self.owner).status_code, status.HTTP_200_OK)
         admin = get_user_model().objects.create_user(username="p5i_adm", email="p5i_adm@example.com", password="x", account_type="admin")
         self.assertEqual(self._get(admin).status_code, status.HTTP_200_OK)
+
+
+class NextLabelingRedirectTest(TestCase):
+    """Study 1: a finished form_mode labeling points the annotator at the main labeling."""
+
+    def setUp(self):
+        from labeling.models import LabelingSection
+        from answer.models import Answer
+        self.Answer = Answer
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="nl_owner", email="nl_owner@example.com", password="x")
+        self.user = User.objects.create_user(username="nl_user", email="nl_user@example.com", password="x")
+        self.project = Project.objects.create(name="NL", created_by=self.owner)
+        self.main = self._labeling("Main", form_mode=False)
+        self.part_a = self._labeling("Part A", form_mode=True, next_labeling=self.main)
+        for lab in (self.main, self.part_a):
+            LabelingSection.objects.create(labeling=lab, title="s", order=0, form_type=LabelingSection.FormType.MAIN)
+            LabelingMembership.objects.create(labeling=lab, user=self.user, role="annotator")
+        self.item = Item.objects.create(labeling=self.part_a, payload={}, row_index=0, status="pending")
+        Item.objects.create(labeling=self.main, payload={"a": 1}, row_index=0, status="pending")
+
+    def _labeling(self, title, **kw):
+        return Labeling.objects.create(
+            project=self.project, title=title, created_by=self.owner,
+            start_date=timezone.now().date(), final_date=timezone.now().date(),
+            status="active", **kw,
+        )
+
+    def _get(self, labeling=None):
+        c = APIClient()
+        c.force_authenticate(self.user)
+        return c.get(f"/items/{(labeling or self.part_a).id}/")
+
+    def _answer(self):
+        self.Answer.objects.create(item=self.item, labeling=self.part_a, answered_by=self.user, answer_payload={})
+
+    def test_next_labeling_returned_when_form_mode_done(self):
+        self.assertEqual(self._get().status_code, 200)
+        self._answer()
+        r = self._get()
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data["code"], "NO_LABELINGS_TO_ANSWER")
+        self.assertEqual(r.data["next_labeling_id"], self.main.id)
+
+    def test_finished_form_mode_returns_next_labeling_on_revisit(self):
+        from datetime import timedelta
+        self._answer()
+        self.Answer.objects.update(created_at=timezone.now() - timedelta(days=3))
+        r = self._get()
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data["next_labeling_id"], self.main.id)
+
+    def test_no_next_labeling_without_membership(self):
+        self._answer()
+        LabelingMembership.objects.filter(labeling=self.main, user=self.user).delete()
+        r = self._get()
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data["code"], "NO_LABELINGS_TO_ANSWER")
+        self.assertNotIn("next_labeling_id", r.data)
+
+    def test_no_next_labeling_in_auto_mode(self):
+        self.part_a.form_mode = False
+        self.part_a.save()
+        self.Answer.objects.create(item=self.item, labeling=self.part_a, answered_by=self.user, answer_payload={})
+        self.item.status = "finished"
+        self.item.save()
+        r = self._get()
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data["code"], "NO_LABELINGS_TO_ANSWER")
+        self.assertNotIn("next_labeling_id", r.data)

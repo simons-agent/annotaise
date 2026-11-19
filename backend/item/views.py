@@ -515,7 +515,11 @@ class NextItemView(RetrieveAPIView):
         if isinstance(item, Response):
             return item
         if not item:
-            return Response({'detail': 'Você não tem mais rotulações para responder.','code':'NO_LABELINGS_TO_ANSWER'}, status=400)
+            body = {'detail': 'Você não tem mais rotulações para responder.','code':'NO_LABELINGS_TO_ANSWER'}
+            nxt = labeling.next_labeling
+            if labeling.form_mode and nxt is not None and can_annotate_labeling(user, nxt.id):
+                body['next_labeling_id'] = nxt.id
+            return Response(body, status=400)
 
         return self.serialize_and_return(item)
 
