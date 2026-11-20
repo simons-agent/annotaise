@@ -13,8 +13,8 @@ export default function InnerPageHeader({ onBack, children }: InnerPageHeaderPro
   const { t } = useTranslations();
 
   return (
-    <header className="flex items-center bg-blueberry-700 px-6 py-4 text-white shadow-md">
-      <div className="flex items-center gap-3 w-full">
+    <header className="flex items-center bg-blueberry-700 px-4 py-4 md:px-6 text-white shadow-md">
+      <div className="flex w-full min-w-0 items-start gap-3 md:items-center">
         <Button
           variant="light"
           fill={false}
@@ -25,7 +25,7 @@ export default function InnerPageHeader({ onBack, children }: InnerPageHeaderPro
         >
           <ArrowLeft size={22} />
         </Button>
-        <div className="flex-1 flex items-center justify-between">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-2">{children}</div>
       </div>
     </header>
   );

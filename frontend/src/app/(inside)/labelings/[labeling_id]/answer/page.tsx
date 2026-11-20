@@ -290,7 +290,7 @@ export default function LabelingAnswerPage() {
   const isFirstSection = currentSectionIdx === 0;
 
   const HeaderBadges = (
-    <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
+    <div className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-2 md:basis-auto md:justify-end md:gap-3">
       {rowIndex !== null ? (
         <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-50">
           {t('answer.itemNumber', { number: rowIndex + 1 })}
@@ -312,7 +312,7 @@ export default function LabelingAnswerPage() {
   );
 
   const MainPanel = (
-    <section className="rounded-xl bg-white p-4 h-full overflow-y-auto ">
+    <section className="rounded-xl bg-white p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] h-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden">
       {isLoading ? (
         <p className="text-sm text-gray-600">{t('answer.loadingItem')}</p>
       ) : orderedSections.length === 0 ? (
@@ -324,7 +324,7 @@ export default function LabelingAnswerPage() {
           </div>
         </div>
       ) : currentSection ? (
-        <div className="space-y-6">
+        <div className="min-w-0 max-w-full space-y-6">
           {/* Context-question owns section rendering and question-module behavior. */}
           <UserLabelingSectionWrapper
             key={currentSection.id ?? currentSectionIdx}
@@ -334,7 +334,7 @@ export default function LabelingAnswerPage() {
             onAnswerChange={handleAnswerChange}
           />
 
-          <div className="flex justify-center items-center pt-2">
+          <div className="flex justify-center items-center pt-2 pb-4">
             <div />
             <div className="flex gap-3">
               {/* On narrow screens the side arrows would cover the record, so they sit here instead. */}
@@ -378,8 +378,8 @@ export default function LabelingAnswerPage() {
     <div className="flex flex-col h-full overflow-hidden">
 
       <InnerPageHeader onBack={() => router.push('/labelings')}>
-        <div>
-          <h1 className="text-lg font-semibold leading-tight">
+        <div className="min-w-0 max-w-full">
+          <h1 className="text-lg break-words font-semibold leading-tight">
             {labelingTitle || (isLoading ? t('answer.loadingLabeling') : t('answer.answerLabeling'))}
           </h1>
         </div>
@@ -395,7 +395,7 @@ export default function LabelingAnswerPage() {
           className="h-full gap-3"
         >
           <ResizablePanel id="answer" order={1} defaultSize={showGuide ? 70 : 100} minSize={30}>
-          <div className="relative h-full">
+          <div className="relative h-full min-w-0">
             {isEnabled? (
               <div className="hidden md:block">
                 <div className="absolute right-1 top-1/2 z-10 -translate-y-1/2">

@@ -19,14 +19,14 @@ export default function SectionWrapper({ section, payload, answers, onAnswerChan
   const blocks = useMemo(() => groupElementsByKind(orderedElements), [orderedElements]);
 
   return (
-    <article className={className}>
+    <article className={`min-w-0 max-w-full ${className ?? ''}`}>
       <div className="text-center">
         <div className="relative inline-block border-b-3 border-blueberry-700 p-1 text-xl font-normal text-metal-900">
           <MarkdownContent inline>{sectionTitle}</MarkdownContent>
         </div>
       </div>
 
-      <div className="space-y-4 bg-white p-2 px-[10%]">
+      <div className="min-w-0 max-w-full space-y-4 bg-white p-2 md:px-[10%]">
         {blocks.length > 0 ? (
           blocks.map((block, blockIndex) =>
             block.type === 'context' ? (

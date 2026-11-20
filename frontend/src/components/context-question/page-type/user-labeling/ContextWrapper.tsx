@@ -24,7 +24,7 @@ export default function ContextWrapper({ element, payload, t: tProp }: UserConte
   return (
     <>
       <div className="mt-12 mb-0 text-left">
-        <div className="inline-block text-md font-normal text-metal-900">
+        <div className="inline-block max-w-full text-md font-normal text-metal-900">
           <div className="p-1">
             <MarkdownContent>{contextLabel}</MarkdownContent>
           </div>
@@ -32,7 +32,7 @@ export default function ContextWrapper({ element, payload, t: tProp }: UserConte
       </div>
 
       <div
-        className="rounded-br-xl rounded-ss-3xl border-t-6 border-l-6 bg-blueberry-700-15 p-5 shadow-md"
+        className="min-w-0 max-w-full overflow-x-auto rounded-br-xl rounded-ss-3xl border-t-6 border-l-6 bg-blueberry-700-15 p-3 shadow-md md:p-5"
         style={{
           borderTopColor: 'var(--blueberry-700)',
           borderLeftColor: 'var(--blueberry-700)',
