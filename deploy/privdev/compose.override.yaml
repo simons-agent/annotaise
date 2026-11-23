@@ -48,7 +48,8 @@ services:
       context: ./frontend
       dockerfile: ../deploy/privdev/frontend.Dockerfile
       args:
-        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:?NEXT_PUBLIC_BASE_PATH must be set}
+        # May be empty (served at the URL root) but must be set.
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH?NEXT_PUBLIC_BASE_PATH must be set (empty for the URL root)}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL must be set}
     env_file: !reset []
     volumes: !reset []

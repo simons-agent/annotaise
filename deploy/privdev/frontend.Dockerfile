@@ -14,8 +14,8 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 ARG NEXT_PUBLIC_BASE_PATH
 ARG NEXT_PUBLIC_API_BASE_URL
-RUN test -n "$NEXT_PUBLIC_BASE_PATH" && test -n "$NEXT_PUBLIC_API_BASE_URL" \
- && npm run build
+# NEXT_PUBLIC_BASE_PATH may be empty (URL root); the API URL is required.
+RUN test -n "$NEXT_PUBLIC_API_BASE_URL" && npm run build
 
 FROM node:22-alpine
 WORKDIR /app

@@ -52,7 +52,8 @@ public_url="${public_url%/}"
 origin="$(printf '%s' "$public_url" | sed -E 's#^(https?://[^/]+).*#\1#')"
 host="$(printf '%s' "$origin" | sed -E 's#^https?://([^:/]+).*#\1#')"
 base_path="${public_url#"$origin"}"
-[ -n "$base_path" ] || { echo "public URL must include the mount path" >&2; exit 2; }
+# base_path is empty when the instance is served at the URL root (e.g. a
+# dedicated hostname behind a Cloudflare Tunnel); the API is then at /backend.
 
 # existing <key> from a previous .env (empty if none)
 old() { [ -f "$out" ] && sed -n "s/^$1=//p" "$out" | head -n1 || true; }
