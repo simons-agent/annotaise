@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { Send, Info } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,8 +15,8 @@ import {
 } from '@/components/context-question';
 import { useTranslations } from '@/i18n/use-translations';
 import { fetchLabelingById, fetchNextAnswer, submitAnswer } from '@/modules/labelings/labelingService';
-import { nextLabelingRedirect } from './nextLabeling';
-import type { LabelingStructureSection } from '@/modules/labelings/labelingsTypes';
+import { nextLabelingRedirect, PART_DONE_PARAM, previousPartRedirect, recordProgressLabel } from './nextLabeling';
+import type { AnswerProgress, LabelingStructureSection } from '@/modules/labelings/labelingsTypes';
 
 import InnerPageHeader from '@/components/InnerPageHeader';
 import Button from '@/components/button/Button';
@@ -30,6 +30,7 @@ import { NARROW_SCREEN_QUERY } from '@/components/side-bar/sidebar_provider';
 export default function LabelingAnswerPage() {
   const { t } = useTranslations();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ labeling_id: string }>();
   const loadedLabelingIdRef = useRef<number | null>(null);
 
@@ -45,6 +46,9 @@ export default function LabelingAnswerPage() {
   const [answers, setAnswers] = useState<UserAnswerMap>({});
   const [currentItemId, setCurrentItemId] = useState<number | null>(null);
   const [rowIndex, setRowIndex] = useState<number | null>(null);
+  // The annotator's own progress through this labeling (and its part, if joined).
+  const [progress, setProgress] = useState<AnswerProgress | null>(null);
+  const partDoneShownRef = useRef(false);
 
   const [currentSectionIdx, setCurrentSectionIdx] = useState(0);
   // The annotation guide starts open by default so annotators see it without
@@ -131,6 +135,13 @@ export default function LabelingAnswerPage() {
       setPayload((nextAnswer.item?.payload as Record<string, unknown>) ?? {});
       setCurrentItemId(nextAnswer.item?.id ?? null);
       setRowIndex(nextAnswer.item?.row_index ?? null);
+      setProgress(nextAnswer.progress ?? null);
+      // Arrived here from the end of the previous part: say so once.
+      const part = nextAnswer.progress?.part;
+      if (searchParams?.get(PART_DONE_PARAM) && part && part > 1 && !partDoneShownRef.current) {
+        partDoneShownRef.current = true;
+        toast.success(t('answer.partDone', { part: part - 1, next: part }));
+      }
       setAnswers(buildInitialUserAnswers(nextSections));
       setCurrentSectionIdx(0);
     } catch (error) {
@@ -138,11 +149,12 @@ export default function LabelingAnswerPage() {
       setPayload({});
       setCurrentItemId(null);
       setRowIndex(null);
+      setProgress(null);
       setSections([]);
 
       if (axios.isAxiosError(error)) {
         // Joined labelings: continue straight into the next one, no thank-you flash.
-        const target = nextLabelingRedirect(error.response?.data);
+        const target = nextLabelingRedirect(error.response?.data) ?? previousPartRedirect(error.response?.data);
         if (target) {
           redirecting = true;
           router.replace(target);
@@ -175,7 +187,7 @@ export default function LabelingAnswerPage() {
     } finally {
       if (!redirecting) setIsLoading(false);
     }
-  }, [labelingId, router, showError, t]);
+  }, [labelingId, router, searchParams, showError, t]);
 
   useEffect(() => {
     if (Object.is(loadedLabelingIdRef.current, labelingId)) return;
@@ -291,7 +303,16 @@ export default function LabelingAnswerPage() {
 
   const HeaderBadges = (
     <div className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-2 md:basis-auto md:justify-end md:gap-3">
-      {rowIndex !== null ? (
+      {progress?.part && progress.parts ? (
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blueberry-700">
+          {t('labelings.part', { part: progress.part, parts: progress.parts })}
+        </span>
+      ) : null}
+      {progress ? (
+        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-50">
+          {recordProgressLabel(progress, t)}
+        </span>
+      ) : rowIndex !== null ? (
         <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-50">
           {t('answer.itemNumber', { number: rowIndex + 1 })}
         </span>
@@ -313,6 +334,22 @@ export default function LabelingAnswerPage() {
 
   const MainPanel = (
     <section className="rounded-xl bg-white p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] h-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden">
+      {progress?.total ? (
+        // Fixed set of records: a thin bar shows how far through it the annotator is.
+        <div
+          className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-blueberry-700-15"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.done}
+          aria-label={recordProgressLabel(progress, t) ?? undefined}
+        >
+          <div
+            className="h-full rounded-full bg-blueberry-700 transition-all"
+            style={{ width: `${Math.min(100, (progress.done / progress.total) * 100)}%` }}
+          />
+        </div>
+      ) : null}
       {isLoading ? (
         <p className="text-sm text-gray-600">{t('answer.loadingItem')}</p>
       ) : orderedSections.length === 0 ? (

@@ -365,3 +365,86 @@ class NextLabelingRedirectTest(TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.data["code"], "NO_LABELINGS_TO_ANSWER")
         self.assertNotIn("next_labeling_id", r.data)
+
+
+class JoinedPartsTest(TestCase):
+    """Study 1: the later part stays locked until the earlier form_mode part is done,
+    and each annotator gets their own progress."""
+
+    def setUp(self):
+        from labeling.models import LabelingSection
+        from answer.models import Answer
+        self.Answer = Answer
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="jp_owner", email="jp_owner@example.com", password="x")
+        self.user = User.objects.create_user(username="jp_user", email="jp_user@example.com", password="x")
+        self.project = Project.objects.create(name="JP", created_by=self.owner)
+        self.main = self._labeling("Parte 2", form_mode=False)
+        self.part_a = self._labeling("Parte 1", form_mode=True, next_labeling=self.main)
+        for lab in (self.main, self.part_a):
+            LabelingSection.objects.create(labeling=lab, title="s", order=0, form_type=LabelingSection.FormType.MAIN)
+            LabelingMembership.objects.create(labeling=lab, user=self.user, role="annotator")
+        self.items_a = [Item.objects.create(labeling=self.part_a, payload={"i": i}, row_index=i, status="pending") for i in range(2)]
+        Item.objects.create(labeling=self.main, payload={"a": 1}, row_index=0, status="pending")
+
+    def _labeling(self, title, **kw):
+        return Labeling.objects.create(
+            project=self.project, title=title, created_by=self.owner,
+            start_date=timezone.now().date(), final_date=timezone.now().date(),
+            status="active", **kw,
+        )
+
+    def _client(self):
+        c = APIClient()
+        c.force_authenticate(self.user)
+        return c
+
+    def _finish_a(self):
+        for item in self.items_a:
+            self.Answer.objects.create(item=item, labeling=self.part_a, answered_by=self.user, answer_payload={})
+
+    def _dashboard_ids(self):
+        r = self._client().get("/labelings/dashboard/")
+        self.assertEqual(r.status_code, 200)
+        rows = r.data["results"] if isinstance(r.data, dict) else r.data
+        return {row["id"]: row for row in rows}
+
+    def test_later_part_locked_until_earlier_part_done(self):
+        r = self._client().get(f"/items/{self.main.id}/")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.data["code"], "PREVIOUS_PART_REQUIRED")
+        self.assertEqual(r.data["previous_labeling_id"], self.part_a.id)
+        self.Answer.objects.create(item=self.items_a[0], labeling=self.part_a, answered_by=self.user, answer_payload={})
+        self.assertEqual(self._client().get(f"/items/{self.main.id}/").status_code, 403)
+        self.Answer.objects.create(item=self.items_a[1], labeling=self.part_a, answered_by=self.user, answer_payload={})
+        self.assertEqual(self._client().get(f"/items/{self.main.id}/").status_code, 200)
+
+    def test_not_locked_without_membership_in_earlier_part(self):
+        LabelingMembership.objects.filter(labeling=self.part_a, user=self.user).delete()
+        self.assertEqual(self._client().get(f"/items/{self.main.id}/").status_code, 200)
+
+    def test_progress_in_next_item(self):
+        r = self._client().get(f"/items/{self.part_a.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": 1, "parts": 2})
+        self.Answer.objects.create(item=self.items_a[0], labeling=self.part_a, answered_by=self.user, answer_payload={})
+        self.assertEqual(self._client().get(f"/items/{self.part_a.id}/").data["progress"]["done"], 1)
+        self.Answer.objects.create(item=self.items_a[1], labeling=self.part_a, answered_by=self.user, answer_payload={})
+        r = self._client().get(f"/items/{self.main.id}/")
+        self.assertEqual(r.data["progress"], {"done": 0, "total": None, "part": 2, "parts": 2})
+
+    def test_progress_without_joined_parts(self):
+        self.part_a.next_labeling = None
+        self.part_a.save()
+        r = self._client().get(f"/items/{self.part_a.id}/")
+        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": None, "parts": None})
+
+    def test_dashboard_hides_later_part_until_earlier_done(self):
+        rows = self._dashboard_ids()
+        self.assertEqual(set(rows), {self.part_a.id})
+        self.assertEqual((rows[self.part_a.id]["part"], rows[self.part_a.id]["parts"]), (1, 2))
+        self.assertEqual(rows[self.part_a.id]["total_items"], 2)
+        self._finish_a()
+        rows = self._dashboard_ids()
+        self.assertEqual(set(rows), {self.main.id})
+        self.assertEqual((rows[self.main.id]["part"], rows[self.main.id]["total_items"]), (2, None))

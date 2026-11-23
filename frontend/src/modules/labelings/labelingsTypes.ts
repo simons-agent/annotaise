@@ -168,11 +168,14 @@ export type LabelingDashboard = {
   total_days: number;
   days_passed: number;
   items_done: number;
-  total_items?: number;
+  total_items?: number | null;
   background_required?: boolean;
   background_answered?: boolean;
   form_mode?: boolean;
   answers_collected?: number;
+  // Joined labelings (Study 1): position among the parts; null when not joined.
+  part?: number | null;
+  parts?: number | null;
 };
 
 // Item- and answer-related types
@@ -197,6 +200,17 @@ export type AnswerStructure = {
   // Labeling-level annotation guide (markdown). Present so token-based clients
   // can show the guide without a separate labeling fetch.
   guide?: string;
+  // The annotator's own progress, counted before this item. `total` is null when
+  // items are distributed (the user's share is not fixed); `part`/`parts` are
+  // null when the labeling is not joined to another one.
+  progress?: AnswerProgress;
+};
+
+export type AnswerProgress = {
+  done: number;
+  total: number | null;
+  part: number | null;
+  parts: number | null;
 };
 
 export type AnswerPayload = {

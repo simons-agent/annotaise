@@ -5,6 +5,7 @@ from answer.models import Answer, BackgroundAnswer
 from user.models import UserGroup
 from user.permissions import IsAdminAccount
 from labeling.permissions import CanEditLabelingPermission, can_annotate_labeling
+from labeling import parts
 
 from datetime import timedelta
 import csv
@@ -253,7 +254,10 @@ class NextItemView(RetrieveAPIView):
 
     def serialize_and_return(self, item):
         serializer = self.get_serializer(item)
-        return Response(serializer.data, status=200)
+        data = dict(serializer.data)
+        # The annotator's own progress (counted before this item), for the header.
+        data['progress'] = parts.progress(item.labeling, self.request.user)
+        return Response(data, status=200)
 
     def ensure_membership(self, item, user):
         membership, created = ItemMembership.objects.get_or_create(item=item, user=user)
@@ -498,6 +502,18 @@ class NextItemView(RetrieveAPIView):
 
         if not can_annotate_labeling(user, labeling.id):
             return Response('Você não faz parte dessa rotulação',status=403)
+
+        # Joined labelings: the later part opens only once the earlier one is done.
+        blocker = parts.blocking_part(labeling, user)
+        if blocker is not None:
+            return Response(
+                {
+                    'detail': 'Conclua a parte anterior antes de começar esta.',
+                    'code': 'PREVIOUS_PART_REQUIRED',
+                    'previous_labeling_id': blocker.id,
+                },
+                status=403,
+            )
 
         if labeling.has_background_form and not BackgroundAnswer.objects.filter(
             labeling=labeling,

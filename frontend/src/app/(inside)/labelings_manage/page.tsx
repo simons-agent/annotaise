@@ -188,7 +188,7 @@ export default function LabelingsPage() {
       <GridItemCard
         key={`labeling-${l.id}`}
         index={index}
-        borderColor={getLabelingCardBorderColor(l.days_passed, l.total_days, l.items_done, l.total_items)}
+        borderColor={getLabelingCardBorderColor(l.days_passed, l.total_days, l.items_done, l.total_items ?? undefined)}
       >
         <IndividualLabelingCard
           title={l.labeling_name}

@@ -386,6 +386,9 @@ class LabelingDashboardSerializer(serializers.Serializer):
     background_answered = serializers.BooleanField(required=False)
     form_mode = serializers.BooleanField(required=False)
     answers_collected = serializers.IntegerField(required=False, allow_null=True)
+    # Joined labelings (Study 1): position among the parts; null when not joined.
+    part = serializers.IntegerField(required=False, allow_null=True)
+    parts = serializers.IntegerField(required=False, allow_null=True)
 #TODO add per-field validation on each serializer, so bad input doesn't surface as an internal server error
 
 class LabelingMembershipDashboardSerializer(serializers.Serializer):

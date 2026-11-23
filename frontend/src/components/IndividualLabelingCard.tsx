@@ -16,6 +16,10 @@ type IndividualManageLabelingCardProps = {
   actionButton: ReactNode;
   formMode?: boolean;
   answersCollected?: number;
+  // Annotator view: "Parte 1 de 2" for joined labelings, and the number of items
+  // the annotator must answer when it is fixed (form mode).
+  partLabel?: string;
+  itemsTotal?: number | null;
   colors?: {
     normal: {
       bg: string;
@@ -35,6 +39,8 @@ export default function IndividualLabelingCard({
   actionButton,
   formMode,
   answersCollected,
+  partLabel,
+  itemsTotal,
   colors,
 }: IndividualManageLabelingCardProps) {
   const { t } = useTranslations();
@@ -72,6 +78,11 @@ export default function IndividualLabelingCard({
 
   return (
     <>
+      {partLabel ? (
+        <span className="mb-1 inline-block w-fit rounded-full bg-blueberry-700-15 px-2.5 py-0.5 text-xs font-semibold text-blueberry-700">
+          {partLabel}
+        </span>
+      ) : null}
       <h3
         className={`${
           isComplete ? 'text-green-blueberry' : isLate ? 'text-red-blueberry' : 'text-black'
@@ -85,7 +96,22 @@ export default function IndividualLabelingCard({
       <div className="mt-2 h-0.75 rounded-full bg-metal-50" />
 
       <div className="mt-3 flex flex-col gap-3 min-w-0 w-full">
-        {formMode ? (
+        {!isManageVariant && itemsTotal ? (
+          // Annotator, fixed set of items: their own progress through it.
+          <ProgressBar
+            value={Math.min(labelingsDone, itemsTotal)}
+            max={itemsTotal}
+            label={t('labelings.progress.itemsOfTotal', { done: labelingsDone, total: itemsTotal })}
+            bgColor={normalColors.bg}
+            fillColor={normalColors.fill}
+            rounded="right"
+            className="-ml-3"
+          />
+        ) : !isManageVariant && partLabel ? (
+          <div className="-ml-3 w-full">
+            <StatPill label={t('labelings.progress.itemsDone')} value={labelingsDone} color="blue" cut="right" />
+          </div>
+        ) : formMode ? (
           <div className="-ml-3 w-full">
             <StatPill
               label={t('labelings.progress.answersCollected')}

@@ -2,6 +2,7 @@ from .models import Labeling, LabelingMembership, LabelingSection, LabelingEleme
 from .serializers import (LabelingSerializer, LabelingMembershipSerializer,
 LabelingSectionsBulkCreateSerializer, LabelingSectionSerializer, LabelingDashboardSerializer, LabelingMembershipDashboardSerializer, LabelingAgreementSummarySerializer)
 from user.permissions import IsAdminAccount
+from . import parts
 from .permissions import CanEditLabelingPermission, IsLabelingOwnerPermission, EDIT_ROLES, ANNOTATE_ROLES
 from item.models import Item
 from user.models import UserGroup
@@ -310,6 +311,10 @@ class LabelingViewSet(viewsets.ModelViewSet):
                     element, request.user, user_group_names
                 ):
                     continue
+                # Joined labelings: a later part stays hidden until the earlier one is done.
+                if parts.blocking_part(element, request.user) is not None:
+                    continue
+                position = parts.part_position(element)
                 background_answered = (
                     not element.has_background_form
                     or element.id in background_answered_ids
@@ -325,6 +330,9 @@ class LabelingViewSet(viewsets.ModelViewSet):
                     "background_answered": background_answered,
                     "form_mode": bool(element.form_mode),
                     "answers_collected": element.answers_collected,
+                    "total_items": element.items.count() if element.form_mode else None,
+                    "part": position[0] if position else None,
+                    "parts": position[1] if position else None,
                 })
             return rows
 

@@ -74,6 +74,8 @@ export default function LabelingsPage() {
               labelingsDone={l.items_done}
               formMode={l.form_mode}
               answersCollected={l.answers_collected}
+              partLabel={l.part && l.parts ? t('labelings.part', { part: l.part, parts: l.parts }) : undefined}
+              itemsTotal={l.part ? l.total_items : undefined}
               variant="labelings"
               actionButton={
                 <Button
@@ -82,7 +84,9 @@ export default function LabelingsPage() {
                   variant="normal"
                   ariaLabel={t('labelings.action.answerAria')}
                 >
-                  {mustAnswerBackgroundFirst ? 'BACKGROUND' : t('labelings.action.answer')}
+                  {mustAnswerBackgroundFirst || l.items_done === 0
+                    ? t('labelings.action.start')
+                    : t('labelings.action.continue')}
                 </Button>
               }
             />
