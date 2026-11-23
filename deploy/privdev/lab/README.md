@@ -12,7 +12,7 @@ The production instance runs as `annotaise-study` in the AISE lab container
   service) maps `https://privdev.aise-lab.com` to `http://localhost:8080`:
   `write-env.sh annotaise-study https://privdev.aise-lab.com 8080 ...`
   (empty base path, API at `/backend`).
-* **Paths.** Checkout `/opt/annotaise/repo`, backups `/opt/annotaise/backups`
+* **Paths.** Settings symlink `/etc/annotaise/annotaise-study.env`; checkout `/opt/annotaise/repo`, backups `/opt/annotaise/backups`
   (`/etc/annotaise/backup.env`), logs `/opt/annotaise/logs`.
 * **System units** (files in this directory, installed to `/etc/systemd/system`):
   `annotaise-study.service` starts the stack at boot (Podman's
@@ -22,7 +22,7 @@ The production instance runs as `annotaise-study` in the AISE lab container
   `annotaise-status.timer` runs `/usr/local/bin/annotaise-status` daily at
   09:00 America/Sao_Paulo (results: `journalctl -u annotaise-status`).
 * **Helpers** (install to `/usr/local/bin`): `annotaise-dc` (compose shortcut, refuses `-v`),
-  `annotaise-update` (predeploy backup, fast-forward pull, rebuild with one retry, status).
+  `annotaise-backup [label]` (backup now), `annotaise-update` (predeploy backup, fast-forward pull, rebuild with one retry, status).
 * **Updates.** `20auto-upgrades` goes to `/etc/apt/apt.conf.d/`
   (unattended security updates).
 * **Access.** SSH via Cloudflare Access: `ssh-privdev.aise-lab.com`,

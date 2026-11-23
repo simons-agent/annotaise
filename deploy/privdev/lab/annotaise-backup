@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Database backup of the production instance.
+#   sudo annotaise-backup                 # normal backup (pruned by the nightly retention)
+#   sudo annotaise-backup before-students # labelled backup, kept until deleted by hand
+set -euo pipefail
+cd /opt/annotaise/repo
+export ANNOTAISE_BACKUP_ROOT=/opt/annotaise/backups COMPOSE="docker compose"
+if [ $# -ge 1 ]; then exec deploy/privdev/backup.sh annotaise-study --label "$1"; else exec deploy/privdev/backup.sh annotaise-study; fi
