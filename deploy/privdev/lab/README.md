@@ -21,6 +21,8 @@ The production instance runs as `annotaise-study` in the AISE lab container
   `WorkingDirectory=/opt/annotaise/repo` added) at 02:30 UTC;
   `annotaise-status.timer` runs `/usr/local/bin/annotaise-status` daily at
   09:00 America/Sao_Paulo (results: `journalctl -u annotaise-status`).
+* **Helpers** (install to `/usr/local/bin`): `annotaise-dc` (compose shortcut, refuses `-v`),
+  `annotaise-update` (predeploy backup, fast-forward pull, rebuild with one retry, status).
 * **Updates.** `20auto-upgrades` goes to `/etc/apt/apt.conf.d/`
   (unattended security updates).
 * **Access.** SSH via Cloudflare Access: `ssh-privdev.aise-lab.com`,

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Shortcut for docker compose on the production instance. Examples (with sudo):
+#   sudo annotaise-dc ps            # list the four containers
+#   sudo annotaise-dc logs -f api   # follow the API log (Ctrl+C to stop)
+#   sudo annotaise-dc restart       # restart everything (keeps data)
+# Never use "down -v": it deletes the database.
+set -euo pipefail
+for a in "$@"; do [ "$a" = "-v" ] || [ "$a" = "--volumes" ] && { echo "Refusing: -v/--volumes would delete the database." >&2; exit 2; }; done
+cd /opt/annotaise/repo
+exec docker compose -p annotaise-study -f docker-compose.yaml -f deploy/privdev/compose.override.yaml \
+  --env-file deploy/privdev/annotaise-study/.env "$@"

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Updates production to the newest commit of the fork branch privdev/study1.
+# Usage: sudo annotaise-update        (takes a labelled backup first)
+set -euo pipefail
+cd /opt/annotaise/repo
+export ANNOTAISE_BACKUP_ROOT=/opt/annotaise/backups COMPOSE="docker compose"
+echo "1/4 backup";   deploy/privdev/backup.sh annotaise-study --label predeploy
+echo "2/4 download"; old=$(git rev-parse --short HEAD); git fetch -q origin privdev/study1
+git merge -q --ff-only origin/privdev/study1; new=$(git rev-parse --short HEAD); echo "    $old -> $new"
+echo "3/4 rebuild (several minutes)"
+annotaise-dc up -d --build || { echo "Build failed; retrying once (Google font download can be flaky)"; annotaise-dc up -d --build; }
+echo "4/4 check";    sleep 20; annotaise-status
