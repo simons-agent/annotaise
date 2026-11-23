@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# One-page health overview of the PrivDev AnnotAISE production instance.
+# Run with sudo:  sudo annotaise-status
+ok(){ printf '  [ok]   %s\n' "$*"; }; bad(){ printf '  [FAIL] %s\n' "$*"; FAIL=1; }; FAIL=0
+echo "== AnnotAISE production status - $(date '+%Y-%m-%d %H:%M %Z') =="
+echo "Containers:"
+for c in db api frontend gateway; do
+  s=$(podman inspect -f '{{.State.Status}}' annotaise-study-$c-1 2>/dev/null || echo missing)
+  [ "$s" = running ] && ok "$c running" || bad "$c: $s"
+done
+echo "Website:"
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1:8080/login); [ "$code" = 200 ] && ok "local gateway answers ($code)" || bad "local gateway: $code"
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://privdev.aise-lab.com/login); [ "$code" = 200 ] && ok "public URL answers ($code)" || bad "public URL: $code"
+systemctl is-active -q cloudflared && ok "Cloudflare tunnel running" || bad "cloudflared not running"
+echo "Backups:"
+last=$(ls -1t /opt/annotaise/backups/annotaise-study/*.dump 2>/dev/null | head -1)
+if [ -n "$last" ]; then age=$(( ( $(date +%s) - $(stat -c %Y "$last") ) / 3600 )); [ $age -le 26 ] && ok "last backup ${age}h ago: $(basename "$last")" || bad "last backup is ${age}h old"; else bad "no backup found"; fi
+echo "System:"
+use=$(df --output=pcent / | tail -1 | tr -dc 0-9); [ "$use" -lt 80 ] && ok "disk ${use}% used" || bad "disk ${use}% used"
+up=$(apt list --upgradable 2>/dev/null | grep -c upgradable); ok "$up package update(s) waiting (security updates install automatically)"
+[ -f /var/run/reboot-required ] && echo "  [info] a reboot is recommended (ask the lab admins / Proxmox)" || ok "no reboot needed"
+echo; [ $FAIL = 0 ] && echo "ALL OK" || echo "SOMETHING NEEDS ATTENTION"
+exit $FAIL

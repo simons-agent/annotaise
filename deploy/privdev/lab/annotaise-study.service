@@ -1,0 +1,15 @@
+[Unit]
+Description=AnnotAISE production (PrivDev) - start containers at boot
+Wants=network-online.target podman.socket
+After=network-online.target podman.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/annotaise/repo
+ExecStart=/usr/bin/docker compose -p annotaise-study -f docker-compose.yaml -f deploy/privdev/compose.override.yaml --env-file deploy/privdev/annotaise-study/.env up -d
+ExecStop=/usr/bin/docker compose -p annotaise-study -f docker-compose.yaml -f deploy/privdev/compose.override.yaml --env-file deploy/privdev/annotaise-study/.env stop
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+[Unit]
+Description=Daily AnnotAISE health check (see: journalctl -u annotaise-status)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/annotaise-status
