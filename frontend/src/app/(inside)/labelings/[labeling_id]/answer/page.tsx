@@ -15,7 +15,13 @@ import {
 } from '@/components/context-question';
 import { useTranslations } from '@/i18n/use-translations';
 import { fetchLabelingById, fetchNextAnswer, submitAnswer } from '@/modules/labelings/labelingService';
-import { nextLabelingRedirect, PART_DONE_PARAM, previousPartRedirect, recordProgressLabel } from './nextLabeling';
+import {
+  backgroundRedirect,
+  nextLabelingRedirect,
+  PART_DONE_PARAM,
+  previousPartRedirect,
+  recordProgressLabel,
+} from './nextLabeling';
 import type { AnswerProgress, LabelingStructureSection } from '@/modules/labelings/labelingsTypes';
 
 import InnerPageHeader from '@/components/InnerPageHeader';
@@ -154,7 +160,10 @@ export default function LabelingAnswerPage() {
 
       if (axios.isAxiosError(error)) {
         // Joined labelings: continue straight into the next one, no thank-you flash.
-        const target = nextLabelingRedirect(error.response?.data) ?? previousPartRedirect(error.response?.data);
+        // Joined labelings and the profile form: go where the annotator has to be.
+        const data = error.response?.data;
+        const target =
+          nextLabelingRedirect(data) ?? previousPartRedirect(data) ?? backgroundRedirect(data, labelingId);
         if (target) {
           redirecting = true;
           router.replace(target);

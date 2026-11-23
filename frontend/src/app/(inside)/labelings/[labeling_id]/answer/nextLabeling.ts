@@ -43,3 +43,12 @@ export function recordProgressLabel(
   }
   return t('answer.recordsDone', { done: progress.done });
 }
+
+/** Path of this labeling's background (profile) form when it must be answered first, or null. */
+export function backgroundRedirect(
+  data: { code?: string } | null | undefined,
+  labelingId: number,
+): string | null {
+  if (data?.code !== 'BACKGROUND_REQUIRED' || !validId(labelingId)) return null;
+  return `/labelings/${labelingId}/background`;
+}

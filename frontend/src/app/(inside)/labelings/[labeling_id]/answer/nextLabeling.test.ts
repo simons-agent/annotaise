@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextLabelingRedirect, previousPartRedirect, recordProgressLabel } from './nextLabeling';
+import { backgroundRedirect, nextLabelingRedirect, previousPartRedirect, recordProgressLabel } from './nextLabeling';
 
 const t = (key: string, vars?: Record<string, string | number>) => `${key}:${JSON.stringify(vars ?? {})}`;
 
@@ -43,5 +43,16 @@ describe('recordProgressLabel', () => {
 
   it('returns null without progress', () => {
     expect(recordProgressLabel(undefined, t)).toBeNull();
+  });
+});
+
+describe('backgroundRedirect', () => {
+  it('sends the annotator to the profile form first', () => {
+    expect(backgroundRedirect({ code: 'BACKGROUND_REQUIRED' }, 20)).toBe('/labelings/20/background');
+  });
+
+  it('ignores other codes', () => {
+    expect(backgroundRedirect({ code: 'PREVIOUS_PART_REQUIRED' }, 20)).toBeNull();
+    expect(backgroundRedirect(undefined, 20)).toBeNull();
   });
 });
