@@ -1,3 +1,5 @@
+from html import escape
+
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 
@@ -9,7 +11,7 @@ Você foi convidado para acessar a Annotaise como {invitation.role}.
 
 Complete seu cadastro pelo link:
 {link}
-
+{video_text}
 Se você não reconhece este convite, ignore este e-mail.
 """,
         "html": """
@@ -46,6 +48,7 @@ Se você não reconhece este convite, ignore este e-mail.
         </a>
     </p>
 
+{video_html}
     <p>
         Se você não reconhece este convite, basta ignorar este e-mail.
     </p>
@@ -70,7 +73,7 @@ You were invited to access Annotaise as {invitation.role}.
 
 Complete your registration using this link:
 {link}
-
+{video_text}
 If you do not recognize this invitation, ignore this email.
 """,
         "html": """
@@ -107,6 +110,7 @@ If you do not recognize this invitation, ignore this email.
         </a>
     </p>
 
+{video_html}
     <p>
         If you do not recognize this invitation, you can ignore this email.
     </p>
@@ -126,6 +130,15 @@ If you do not recognize this invitation, ignore this email.
     },
 }
 
+INVITATION_VIDEO_TEXT = {
+    "pt-BR": "\nAntes de começar, assista ao vídeo tutorial:\n{url}\n",
+    "en": "\nBefore you start, watch the tutorial video:\n{url}\n",
+}
+INVITATION_VIDEO_HTML = {
+    "pt-BR": '    <p>Antes de começar, assista ao <a href="{url}">vídeo tutorial</a>.</p>\n',
+    "en": '    <p>Before you start, watch the <a href="{url}">tutorial video</a>.</p>\n',
+}
+
 DEFAULT_INVITATION_EMAIL_LANGUAGE = "pt-BR"
 SUPPORTED_INVITATION_EMAIL_LANGUAGES = tuple(INVITATION_EMAIL_TEMPLATES.keys())
 
@@ -139,9 +152,14 @@ def get_invitation_email_template(language):
 
 def send_invitation_email(invitation, link, language=DEFAULT_INVITATION_EMAIL_LANGUAGE):
     template = get_invitation_email_template(language)
+    lang = language if language in INVITATION_EMAIL_TEMPLATES else DEFAULT_INVITATION_EMAIL_LANGUAGE
+    url = getattr(settings, "INVITATION_VIDEO_URL", "")
+    video_text = INVITATION_VIDEO_TEXT[lang].format(url=url) if url else ""
+    video_html = INVITATION_VIDEO_HTML[lang].format(url=escape(url, quote=True)) if url else ""
     subject = template["subject"]
-    text_message = template["text"].format(invitation=invitation, link=link)
-    html_message = template["html"].format(invitation=invitation, link=link)
+    text_message = template["text"].format(invitation=invitation, link=link, video_text=video_text)
+    html_message = template["html"].format(
+        invitation=invitation, link=link, video_html=video_html)
 
     msg = EmailMultiAlternatives(
         subject=subject,

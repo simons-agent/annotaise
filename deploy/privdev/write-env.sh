@@ -102,6 +102,8 @@ trap 'rm -f "$tmp"' EXIT
   echo "EMAIL_HOST_USER=$mail_user"
   echo "EMAIL_HOST_PASSWORD=$(old EMAIL_HOST_PASSWORD)"
   echo "DEFAULT_FROM_EMAIL=$mail_from"
+  echo "# Optional tutorial video linked from the invitation e-mail (empty = no link); a rerun keeps it."
+  echo "INVITATION_VIDEO_URL=$(old INVITATION_VIDEO_URL)"
 } > "$tmp"
 chmod 0600 "$tmp"
 mv -f "$tmp" "$out"

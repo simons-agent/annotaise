@@ -224,6 +224,8 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+# Optional tutorial video linked from the invitation e-mail; empty = no video line.
+INVITATION_VIDEO_URL = os.getenv("INVITATION_VIDEO_URL", "").strip()
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/

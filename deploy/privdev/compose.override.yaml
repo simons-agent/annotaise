@@ -38,6 +38,8 @@ services:
       DJANGO_FORCE_SCRIPT_NAME: ${DJANGO_FORCE_SCRIPT_NAME:-}
       DJANGO_COOKIE_DOMAIN: ""
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}
+      # Optional: tutorial video linked from the invitation e-mail.
+      INVITATION_VIDEO_URL: ${INVITATION_VIDEO_URL:-}
     restart: unless-stopped
 
   frontend:
