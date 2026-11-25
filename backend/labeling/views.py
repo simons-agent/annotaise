@@ -333,6 +333,7 @@ class LabelingViewSet(viewsets.ModelViewSet):
                     "total_items": element.items.count() if element.form_mode else None,
                     "part": position[0] if position else None,
                     "parts": position[1] if position else None,
+                    "goal": parts.goal(element, request.user),
                 })
             return rows
 

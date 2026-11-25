@@ -15,7 +15,7 @@ class LabelingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Labeling
-        fields = ['id', 'project', 'title', 'created_at','status','column_names','start_date','final_date','users_per_item','block_section_back','has_background_form','guide','decision','decision_mode','decisive_question','distribution_strategy','form_mode','anonymous_token','anonymous_url','items_per_group','next_labeling']
+        fields = ['id', 'project', 'title', 'created_at','status','column_names','start_date','final_date','users_per_item','block_section_back','has_background_form','guide','decision','decision_mode','decisive_question','distribution_strategy','form_mode','anonymous_token','anonymous_url','items_per_group','next_labeling','answer_target','milestone_step']
         read_only_fields = ['id', 'created_at','created_by','column_names','status','anonymous_token','anonymous_url']
 
     def validate(self, attrs):
@@ -389,6 +389,8 @@ class LabelingDashboardSerializer(serializers.Serializer):
     # Joined labelings (Study 1): position among the parts; null when not joined.
     part = serializers.IntegerField(required=False, allow_null=True)
     parts = serializers.IntegerField(required=False, allow_null=True)
+    # Study 1 answer goal (parts.goal): target, milestone and pace; null without a target.
+    goal = serializers.DictField(required=False, allow_null=True)
 #TODO add per-field validation on each serializer, so bad input doesn't surface as an internal server error
 
 class LabelingMembershipDashboardSerializer(serializers.Serializer):

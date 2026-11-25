@@ -5,18 +5,23 @@ import remarkGfm from 'remark-gfm';
 import { ExternalLink } from 'lucide-react';
 
 import { useTranslations } from '@/i18n/use-translations';
+import { firstYoutubeId } from '@/modules/goal/goal';
+import TutorialVideo from './TutorialVideo';
 
 type GuidePanelProps = {
   // Labeling guide markdown; empty string renders the "no guide" placeholder.
   guideText: string;
   // When set, shows an "open in new tab" link to the full guide route.
   externalHref?: string;
+  // The guide's first YouTube link is embedded above it; open by default when true.
+  videoOpen?: boolean;
 };
 
 // Side panel that renders a labeling's annotation guide as markdown. Shared by
 // the authenticated answer page and the public (anonymous) answer page.
-export default function GuidePanel({ guideText, externalHref }: GuidePanelProps) {
+export default function GuidePanel({ guideText, externalHref, videoOpen = true }: GuidePanelProps) {
   const { t } = useTranslations();
+  const videoId = firstYoutubeId(guideText);
 
   return (
     <div className="h-full rounded-xl bg-white p-4 overflow-auto space-y-3">
@@ -36,6 +41,7 @@ export default function GuidePanel({ guideText, externalHref }: GuidePanelProps)
       ) : null}
 
       <div className="mt-1 space-y-4">
+        {videoId ? <TutorialVideo videoId={videoId} defaultOpen={videoOpen} /> : null}
         {guideText ? (
           <div className="prose prose-sm max-w-none text-gray-900">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{guideText}</ReactMarkdown>

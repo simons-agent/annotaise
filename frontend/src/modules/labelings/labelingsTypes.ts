@@ -176,6 +176,7 @@ export type LabelingDashboard = {
   // Joined labelings (Study 1): position among the parts; null when not joined.
   part?: number | null;
   parts?: number | null;
+  goal?: AnswerGoal | null;
 };
 
 // Item- and answer-related types
@@ -206,11 +207,27 @@ export type AnswerStructure = {
   progress?: AnswerProgress;
 };
 
+/** Study 1 answer goal toward a part's target, with the pace until its final_date. */
+export type AnswerGoal = {
+  target: number;
+  done: number;
+  next_milestone: number;
+  /** Records still missing in earlier fixed parts (Parte 1), counted in the pace. */
+  before_missing: number;
+  to_go: number;
+  deadline: string;
+  days_left: number;
+  /** Null once the target is reached or the deadline has passed. */
+  per_week: number | null;
+  per_day: number | null;
+};
+
 export type AnswerProgress = {
   done: number;
   total: number | null;
   part: number | null;
   parts: number | null;
+  goal?: AnswerGoal | null;
 };
 
 export type AnswerPayload = {

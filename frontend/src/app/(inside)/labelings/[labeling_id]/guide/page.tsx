@@ -6,6 +6,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchLabelingById } from '@/modules/labelings/labelingService';
 import { useTranslations } from '@/i18n/use-translations';
+import { firstYoutubeId } from '@/modules/goal/goal';
+import TutorialVideo from '@/components/answer/TutorialVideo';
 
 export default function LabelingGuidePage() {
   const { t } = useTranslations();
@@ -52,8 +54,15 @@ export default function LabelingGuidePage() {
           ) : error ? (
             <p className="text-sm text-red-700">{error}</p>
           ) : guideText ? (
+            <div className="space-y-4">
+            {firstYoutubeId(guideText) ? (
+              <div className="max-w-3xl">
+                <TutorialVideo videoId={firstYoutubeId(guideText) as string} defaultOpen />
+              </div>
+            ) : null}
             <div className="prose prose-sm max-w-none text-gray-900">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{guideText}</ReactMarkdown>
+            </div>
             </div>
           ) : (
             <p className="text-sm text-gray-600">{t('guide.noGuide')}</p>

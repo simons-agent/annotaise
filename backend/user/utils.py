@@ -1,4 +1,5 @@
 from html import escape
+import re
 
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
@@ -135,9 +136,35 @@ INVITATION_VIDEO_TEXT = {
     "en": "\nBefore you start, watch the tutorial video:\n{url}\n",
 }
 INVITATION_VIDEO_HTML = {
-    "pt-BR": '    <p>Antes de começar, assista ao <a href="{url}">vídeo tutorial</a>.</p>\n',
-    "en": '    <p>Before you start, watch the <a href="{url}">tutorial video</a>.</p>\n',
+    "pt-BR": ("Antes de começar, assista ao vídeo tutorial:", "Assistir ao vídeo tutorial"),
+    "en": ("Before you start, watch the tutorial video:", "Watch the tutorial video"),
 }
+_YOUTUBE_ID = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
+
+
+def youtube_id(url):
+    match = _YOUTUBE_ID.search(url or "")
+    return match.group(1) if match else None
+
+
+def video_html(url, language):
+    """E-mail block for the tutorial video: a clickable YouTube thumbnail (mail clients such
+    as Gmail strip iframes) plus a plain link; just the link for a non-YouTube URL."""
+    intro, label = INVITATION_VIDEO_HTML[language]
+    href = escape(url, quote=True)
+    video = youtube_id(url)
+    thumb = (
+        f'        <a href="{href}"><img src="https://img.youtube.com/vi/{video}/hqdefault.jpg" '
+        f'alt="{escape(label)}" width="360" style="display:block; border:0; border-radius:6px;"></a>\n'
+        if video else ""
+    )
+    return (
+        f'    <p style="margin: 20px 0 8px;">{escape(intro)}</p>\n'
+        f'    <div style="margin: 0 0 20px;">\n{thumb}'
+        f'        <a href="{href}" style="display:inline-block; margin-top:8px; font-weight:bold;">&#9654; {escape(label)}</a>\n'
+        f'    </div>\n'
+    )
+
 
 DEFAULT_INVITATION_EMAIL_LANGUAGE = "pt-BR"
 SUPPORTED_INVITATION_EMAIL_LANGUAGES = tuple(INVITATION_EMAIL_TEMPLATES.keys())
@@ -155,11 +182,11 @@ def send_invitation_email(invitation, link, language=DEFAULT_INVITATION_EMAIL_LA
     lang = language if language in INVITATION_EMAIL_TEMPLATES else DEFAULT_INVITATION_EMAIL_LANGUAGE
     url = getattr(settings, "INVITATION_VIDEO_URL", "")
     video_text = INVITATION_VIDEO_TEXT[lang].format(url=url) if url else ""
-    video_html = INVITATION_VIDEO_HTML[lang].format(url=escape(url, quote=True)) if url else ""
+    video_block = video_html(url, lang) if url else ""
     subject = template["subject"]
     text_message = template["text"].format(invitation=invitation, link=link, video_text=video_text)
     html_message = template["html"].format(
-        invitation=invitation, link=link, video_html=video_html)
+        invitation=invitation, link=link, video_html=video_block)
 
     msg = EmailMultiAlternatives(
         subject=subject,

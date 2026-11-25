@@ -426,18 +426,18 @@ class JoinedPartsTest(TestCase):
     def test_progress_in_next_item(self):
         r = self._client().get(f"/items/{self.part_a.id}/")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": 1, "parts": 2})
+        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": 1, "parts": 2, "goal": None})
         self.Answer.objects.create(item=self.items_a[0], labeling=self.part_a, answered_by=self.user, answer_payload={})
         self.assertEqual(self._client().get(f"/items/{self.part_a.id}/").data["progress"]["done"], 1)
         self.Answer.objects.create(item=self.items_a[1], labeling=self.part_a, answered_by=self.user, answer_payload={})
         r = self._client().get(f"/items/{self.main.id}/")
-        self.assertEqual(r.data["progress"], {"done": 0, "total": None, "part": 2, "parts": 2})
+        self.assertEqual(r.data["progress"], {"done": 0, "total": None, "part": 2, "parts": 2, "goal": None})
 
     def test_progress_without_joined_parts(self):
         self.part_a.next_labeling = None
         self.part_a.save()
         r = self._client().get(f"/items/{self.part_a.id}/")
-        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": None, "parts": None})
+        self.assertEqual(r.data["progress"], {"done": 0, "total": 2, "part": None, "parts": None, "goal": None})
 
     def test_dashboard_hides_later_part_until_earlier_done(self):
         rows = self._dashboard_ids()

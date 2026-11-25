@@ -29,6 +29,7 @@ import Button from '@/components/button/Button';
 import ArrowLeftButton from '@/components/button/ArrowLeftButton';
 import ArrowRightButton from '@/components/button/ArrowRightButton';
 import GuidePanel from '@/components/answer/GuidePanel';
+import { goalHeaderLabel } from '@/modules/goal/goal';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { NARROW_SCREEN_QUERY } from '@/components/side-bar/sidebar_provider';
 
@@ -317,7 +318,12 @@ export default function LabelingAnswerPage() {
           {t('labelings.part', { part: progress.part, parts: progress.parts })}
         </span>
       ) : null}
-      {progress ? (
+      {progress?.goal && !progress.total ? (
+        // Part with an answer target: count toward it and this week's pace.
+        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-50">
+          {goalHeaderLabel(progress.goal, t)}
+        </span>
+      ) : progress ? (
         <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-50">
           {recordProgressLabel(progress, t)}
         </span>
@@ -470,6 +476,8 @@ export default function LabelingAnswerPage() {
               <ResizablePanel id="guide" order={2} defaultSize={30} minSize={25}>
                 <GuidePanel
                   guideText={guideText}
+                  // Video open only before the first submitted record (first part, nothing done).
+                  videoOpen={Boolean(progress && (progress.part ?? 1) <= 1 && progress.done === 0)}
                   externalHref={Number.isNaN(labelingId) ? undefined : `/labelings/${labelingId}/guide`}
                 />
               </ResizablePanel>

@@ -46,6 +46,11 @@ class Labeling(models.Model):
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="previous_labelings"
     )
 
+    # Study 1: per-annotator answer target and the step of the milestones beyond it
+    # (target + k * step). Null = no goal shown. Pace is computed toward final_date.
+    answer_target = models.PositiveIntegerField(null=True, blank=True)
+    milestone_step = models.PositiveIntegerField(null=True, blank=True)
+
     users_per_item = models.PositiveIntegerField(null=False, blank=False,default=1)
     block_section_back = models.BooleanField(default=False)
     has_background_form = models.BooleanField(default=False)

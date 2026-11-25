@@ -76,6 +76,7 @@ export default function LabelingsPage() {
               answersCollected={l.answers_collected}
               partLabel={l.part && l.parts ? t('labelings.part', { part: l.part, parts: l.parts }) : undefined}
               itemsTotal={l.part ? l.total_items : undefined}
+              goal={l.goal}
               variant="labelings"
               actionButton={
                 <Button

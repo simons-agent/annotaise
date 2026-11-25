@@ -31,9 +31,24 @@ class InvitationVideoTests(SimpleTestCase):
         text, html = self._send("pt-BR")
         self.assertIn("assista ao vídeo tutorial:\n" + VIDEO, text)
         self.assertIn('href="https://youtu.be/example?a=1&amp;b=2"', html)
+        self.assertNotIn("img.youtube.com", html)
         text, html = self._send("en")
         self.assertIn("watch the tutorial video:\n" + VIDEO, text)
-        self.assertIn(">tutorial video</a>", html)
+        self.assertIn("Watch the tutorial video</a>", html)
+
+    @override_settings(INVITATION_VIDEO_URL="https://youtu.be/5byUtzKvO7w")
+    def test_youtube_thumbnail_links_to_video(self):
+        _, html = self._send("pt-BR")
+        self.assertIn('src="https://img.youtube.com/vi/5byUtzKvO7w/hqdefault.jpg"', html)
+        self.assertIn('<a href="https://youtu.be/5byUtzKvO7w"><img', html)
+        self.assertNotIn("<iframe", html)
+
+    def test_youtube_id_forms(self):
+        from user.utils import youtube_id
+        for url in ("https://youtu.be/5byUtzKvO7w", "https://www.youtube.com/watch?v=5byUtzKvO7w",
+                    "https://www.youtube.com/watch?feature=x&v=5byUtzKvO7w"):
+            self.assertEqual(youtube_id(url), "5byUtzKvO7w")
+        self.assertIsNone(youtube_id("https://example.com/video"))
 
     @override_settings(INVITATION_VIDEO_URL=VIDEO)
     def test_unknown_language_falls_back_to_portuguese(self):

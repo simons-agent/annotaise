@@ -1295,3 +1295,78 @@ class NextLabelingValidationTest(TestCase):
         s = LabelingSerializer(self.a, data=self._data(next_labeling=self.a.id), partial=True)
         self.assertFalse(s.is_valid())
         self.assertIn("next_labeling", s.errors)
+
+
+class AnswerGoalTest(TestCase):
+    """parts.goal: target, milestones beyond it, and the weekly/daily pace (Study 1)."""
+
+    TODAY = timezone.datetime(2026, 12, 1).date()
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="goal_u", email="goal_u@example.com", password="x")
+        project = Project.objects.create(name="Goal", created_by=self.user)
+        self.b = Labeling.objects.create(
+            project=project, title="B", created_by=self.user, start_date=self.TODAY,
+            final_date=timezone.datetime(2026, 12, 15).date(), answer_target=150, milestone_step=50,
+        )
+        self.a = Labeling.objects.create(
+            project=project, title="A", created_by=self.user, start_date=self.TODAY,
+            final_date=self.TODAY, form_mode=True, next_labeling=self.b,
+        )
+        self.a_items = [Item.objects.create(labeling=self.a, payload={}, row_index=i) for i in range(45)]
+
+    def _answer(self, labeling, n, items=None):
+        items = items or [Item.objects.create(labeling=labeling, payload={}, row_index=1000 + i) for i in range(n)]
+        for item in items[:n]:
+            Answer.objects.create(item=item, labeling=labeling, answered_by=self.user, answer_payload={})
+
+    def _goal(self, labeling, today=None):
+        from . import parts
+        return parts.goal(labeling, self.user, today or self.TODAY)
+
+    def test_no_target_means_no_goal(self):
+        self.b.answer_target = None
+        self.b.save()
+        self.assertIsNone(self._goal(self.b))
+        self.assertIsNone(self._goal(self.a))
+
+    def test_pace_in_part_two(self):
+        self._answer(self.b, 10)
+        g = self._goal(self.b)
+        # 140 to go over 15 days (1..15 Dec) = 3 weeks.
+        self.assertEqual((g["done"], g["to_go"], g["days_left"]), (10, 140, 15))
+        self.assertEqual((g["per_week"], g["per_day"]), (47, 10))
+        self.assertEqual(g["next_milestone"], 150)
+
+    def test_part_one_pace_includes_its_missing_records(self):
+        self._answer(self.a, 5, self.a_items)
+        g = self._goal(self.a)
+        self.assertEqual((g["before_missing"], g["to_go"]), (40, 190))
+        self.assertEqual((g["per_week"], g["per_day"]), (64, 13))
+
+    def test_milestones_after_target_and_no_pace(self):
+        self._answer(self.b, 150)
+        g = self._goal(self.b)
+        self.assertEqual(g["next_milestone"], 200)
+        self.assertIsNone(g["per_week"])
+        self.assertIsNone(g["per_day"])
+
+    def test_pace_hidden_after_deadline_but_goal_kept(self):
+        self._answer(self.b, 20)
+        g = self._goal(self.b, timezone.datetime(2026, 12, 16).date())
+        self.assertEqual((g["days_left"], g["per_week"], g["per_day"]), (0, None, None))
+        self.assertEqual(g["to_go"], 130)
+
+    def test_last_day_needs_everything_today(self):
+        g = self._goal(self.b, timezone.datetime(2026, 12, 15).date())
+        self.assertEqual((g["per_week"], g["per_day"]), (150, 150))
+
+    def test_dashboard_row_carries_the_goal(self):
+        """Regression: the dashboard serializer must not drop the goal."""
+        LabelingMembership.objects.create(labeling=self.a, user=self.user, role="annotator")
+        client = APIClient()
+        client.force_authenticate(self.user)
+        rows = client.get("/labelings/dashboard/").data["results"]
+        row = next(r for r in rows if r["id"] == self.a.id)
+        self.assertEqual(row["goal"]["target"], 150)
+        self.assertEqual(row["goal"]["before_missing"], 45)

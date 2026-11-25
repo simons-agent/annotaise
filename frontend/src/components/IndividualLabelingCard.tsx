@@ -1,5 +1,7 @@
 import { ReactNode } from 'react';
 import ProgressBar from './ProgressBar';
+import GoalBlock from './GoalBlock';
+import type { AnswerGoal } from '@/modules/labelings/labelingsTypes';
 import StatPill from './StatPill';
 import { useTranslations } from '@/i18n/use-translations';
 
@@ -20,6 +22,8 @@ type IndividualManageLabelingCardProps = {
   // the annotator must answer when it is fixed (form mode).
   partLabel?: string;
   itemsTotal?: number | null;
+  // Study 1 answer goal (target, milestones, pace) for the annotator view.
+  goal?: AnswerGoal | null;
   colors?: {
     normal: {
       bg: string;
@@ -41,6 +45,7 @@ export default function IndividualLabelingCard({
   answersCollected,
   partLabel,
   itemsTotal,
+  goal,
   colors,
 }: IndividualManageLabelingCardProps) {
   const { t } = useTranslations();
@@ -98,15 +103,21 @@ export default function IndividualLabelingCard({
       <div className="mt-3 flex flex-col gap-3 min-w-0 w-full">
         {!isManageVariant && itemsTotal ? (
           // Annotator, fixed set of items: their own progress through it.
-          <ProgressBar
-            value={Math.min(labelingsDone, itemsTotal)}
-            max={itemsTotal}
-            label={t('labelings.progress.itemsOfTotal', { done: labelingsDone, total: itemsTotal })}
-            bgColor={normalColors.bg}
-            fillColor={normalColors.fill}
-            rounded="right"
-            className="-ml-3"
-          />
+          <>
+            <ProgressBar
+              value={Math.min(labelingsDone, itemsTotal)}
+              max={itemsTotal}
+              label={t('labelings.progress.itemsOfTotal', { done: labelingsDone, total: itemsTotal })}
+              bgColor={normalColors.bg}
+              fillColor={normalColors.fill}
+              rounded="right"
+              className="-ml-3"
+            />
+            {/* The goal lies in a later part: pace only, counting this part's missing records. */}
+            {goal ? <GoalBlock goal={goal} showBar={false} bgColor={normalColors.bg} fillColor={normalColors.fill} /> : null}
+          </>
+        ) : !isManageVariant && goal ? (
+          <GoalBlock goal={goal} bgColor={normalColors.bg} fillColor={normalColors.fill} />
         ) : !isManageVariant && partLabel ? (
           <div className="-ml-3 w-full">
             <StatPill label={t('labelings.progress.itemsDone')} value={labelingsDone} color="blue" cut="right" />
