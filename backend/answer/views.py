@@ -1,5 +1,6 @@
 from .models import Answer, BackgroundAnswer
 from item.models import ItemMembership, Item
+from item.views import _fresh_since, decision_open_for
 from user.models import UserGroup
 from .serializers import (
     AnnotatorAnswerSerializer,
@@ -138,89 +139,98 @@ class AnswerViewset(viewsets.ModelViewSet):
         user = request.user
         data = request.data
 
-        item_id = data.get('item')
-        item = get_object_or_404(Item,pk=item_id)
-
-        # Ensures the user holds a membership for this item. TODO: this really belongs in the permission class... T-T
-        membership = ItemMembership.objects.filter(
-            user=user,
-            item_id=item_id,
-        ).first()
-        if not membership:
-            return Response(
-                {'detail': 'Você não pode responder a esse item da rotulação.'},
-                status=403
-        )
-        # TODO: I think 'finished' should really be part of the enum...
-        if item.status == 'finished':
-            return Response(
-                {'detail': 'Esse item já foi finalizado e não pode mais receber respostas.'},
-                status=403
-        )
-
-        labeling:Labeling = item.labeling
-        if labeling.has_background_form and not BackgroundAnswer.objects.filter(
-            labeling=labeling,
-            answered_by=user,
-        ).exists():
-            return Response(
-                {
-                    "detail": "Você precisa responder o formulário background antes de rotular.",
-                    "code": "BACKGROUND_REQUIRED",
-                },
-                status=403,
-            )
-
-        if labeling.decision == True and labeling.decisive_question is None:
-            return Response(
-                {'detail': 'Rotulação configurada para decisão, mas pergunta decisiva não definida. Contate o dono da rotulação.'},
-                status=400
-        )
-
-
-        serializer = self.get_serializer(data=data, context={'request':request})
+        serializer = self.get_serializer(data=data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        payload = serializer.validated_data.get("answer_payload", {})
-        decisive_answer = None
-        if labeling.decision == True:
-            decisive_element = labeling.decisive_question
-            decisive_id = decisive_element.id
-
-            # When validation is decision-based, check whether the required number
-            # of answers to finish the labeling has been reached.
-            answer_value = None
-            if isinstance(payload, dict):
-                answer_value = payload.get(str(decisive_id))
-                if answer_value is None:
-                    answer_value = payload.get(decisive_id)
-            if answer_value is None:
-                return Response(
-                    {"detail": "Resposta da pergunta decisiva não encontrada."},
-                    status=400,
-                )
-            decisive_answer = str(answer_value)
+        item_id = serializer.validated_data["item"].id
+        labeling_id = serializer.validated_data["labeling"].id
 
         with transaction.atomic():
-            item = (
-                Item.objects
-                .select_for_update()
-                .select_related("labeling")
-                .get(id=item_id)
-            )
-            labeling = item.labeling
+            labeling = get_object_or_404(Labeling.objects.select_for_update(), pk=labeling_id)
+            item = get_object_or_404(Item.objects.select_for_update(), pk=item_id, labeling=labeling)
 
-            # Group quotas are checked at distribution time, but reservations don't
-            # consume slots: between reservation and submission, other answers may
-            # have filled the slots this user could have occupied. Recheck under
-            # the item lock (which serializes concurrent answers) and, if no
-            # compatible slot remains, release the reservation and return a code
-            # for the frontend to fetch another item.
+            # A successful submission consumes its reservation. Acknowledge a retry
+            # even if the record was completed by the original submission.
+            if Answer.objects.filter(item=item, answered_by=user).exists():
+                ItemMembership.objects.filter(item=item, user=user).delete()
+                return Response(
+                    {
+                        "detail": "Você já respondeu a este registro; a resposta anterior foi mantida.",
+                        "code": "ALREADY_ANSWERED",
+                    },
+                    status=409,
+                )
+
+            membership = ItemMembership.objects.filter(user=user, item=item).first()
+            if not membership:
+                return Response(
+                    {"detail": "Você não pode responder a esse item da rotulação.", "code": "RESERVATION_LOST"},
+                    status=403,
+                )
+            if item.status == "finished":
+                return Response(
+                    {"detail": "Esse item já foi finalizado e não pode mais receber respostas.", "code": "ITEM_FINISHED"},
+                    status=403,
+                )
+
+            user_group_names = set()
             if labeling.has_group_quotas:
                 user_group_names = set(
-                    UserGroup.objects
-                    .filter(memberships__user=user)
-                    .values_list('name', flat=True)
+                    UserGroup.objects.filter(memberships__user=user).values_list("name", flat=True)
                 )
+
+            # Expired reservations no longer count toward capacity. Apply the
+            # same eligibility check as a heartbeat before accepting a late answer.
+            if (
+                labeling.decision
+                and not labeling.form_mode
+                and membership.last_seen_at < _fresh_since()
+                and not decision_open_for(labeling, [item], user, user_group_names)[item.id]
+            ):
+                membership.delete()
+                return Response(
+                    {"detail": "Este registro não está mais reservado para você.", "code": "RESERVATION_LOST"},
+                    status=403,
+                )
+
+            if labeling.has_background_form and not BackgroundAnswer.objects.filter(
+                labeling=labeling,
+                answered_by=user,
+            ).exists():
+                return Response(
+                    {
+                        "detail": "Você precisa responder o formulário background antes de rotular.",
+                        "code": "BACKGROUND_REQUIRED",
+                    },
+                    status=403,
+                )
+
+            if labeling.decision == True and labeling.decisive_question is None:
+                return Response(
+                    {'detail': 'Rotulação configurada para decisão, mas pergunta decisiva não definida. Contate o dono da rotulação.'},
+                    status=400
+            )
+
+            payload = serializer.validated_data.get("answer_payload", {})
+            decisive_answer = None
+            if labeling.decision == True:
+                decisive_element = labeling.decisive_question
+                decisive_id = decisive_element.id
+
+                # When validation is decision-based, check whether the required number
+                # of answers to finish the labeling has been reached.
+                answer_value = None
+                if isinstance(payload, dict):
+                    answer_value = payload.get(str(decisive_id))
+                    if answer_value is None:
+                        answer_value = payload.get(decisive_id)
+                if answer_value is None:
+                    return Response(
+                        {"detail": "Resposta da pergunta decisiva não encontrada."},
+                        status=400,
+                    )
+                decisive_answer = str(answer_value)
+
+            if labeling.has_group_quotas:
                 if not Item._slot_open(item.remaining_groups(), user_group_names):
                     membership.delete()
                     return Response(
@@ -384,7 +394,7 @@ class AnonymousSubmitAnswerView(APIView):
     @transaction.atomic
     def post(self, request, token):
         labeling = get_object_or_404(
-            Labeling,
+            Labeling.objects.select_for_update(),
             anonymous_token=token,
             distribution_strategy=Labeling.DistributionStrategy.ANONYMOUS_MODE,
         )
@@ -500,8 +510,9 @@ class LabelingBackgroundAnswerView(APIView):
 
         return Response(BackgroundAnswerSerializer(answer).data, status=200)
 
+    @transaction.atomic
     def put(self, request, labeling_id, **kwargs):
-        labeling = self._get_labeling(labeling_id)
+        labeling = get_object_or_404(Labeling.objects.select_for_update(), id=labeling_id)
         if not can_annotate_labeling(request.user, labeling.id):
             raise PermissionDenied("Você não tem acesso a essa rotulação.")
 
@@ -651,7 +662,7 @@ class ExportAnswersView(APIView):
         # Builds the CSV content as a string, without writing to a file
         csv_data = df.to_csv(index=False)
 
-        response = HttpResponse(csv_data, content_type="text/csv")
+        response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = (
             f'attachment; filename="exported_answers_{labeling.title}.csv"'
         )

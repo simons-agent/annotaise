@@ -485,7 +485,7 @@ class CreateReadLabelingStructureView(APIView):
         examples=None)
     @transaction.atomic # so a failure mid-write doesn't delete what already existed
     def put(self, request, labeling_id):
-        labeling = get_object_or_404(Labeling, id=labeling_id)
+        labeling = get_object_or_404(Labeling.objects.select_for_update(), id=labeling_id)
         form_type = self._resolve_form_type(request)
         if (
             form_type == LabelingSection.FormType.BACKGROUND
@@ -503,6 +503,20 @@ class CreateReadLabelingStructureView(APIView):
         if not perm.can_edit_labeling(request.user, labeling_id):
             raise PermissionDenied(detail=perm.message)
 
+
+        answers = (
+            labeling.background_answers
+            if form_type == LabelingSection.FormType.BACKGROUND
+            else labeling.answers
+        )
+        if answers.exists():
+            return Response(
+                {
+                    "detail": "Este formulário já tem respostas e não pode ser alterado.",
+                    "code": "FORM_HAS_ANSWERS",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         serializer = LabelingSectionsBulkCreateSerializer(
             data=request.data,

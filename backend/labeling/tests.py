@@ -6,7 +6,7 @@ from .serializers import LabelingSerializer, LabelingSectionSerializer, Labeling
 from .models import Labeling, LabelingSection, LabelingElement, MultipleChoiceItem, QuestionRange, LabelingMembership
 from project.models import Project, ProjectMembership
 from item.models import Item
-from answer.models import Answer
+from answer.models import Answer, BackgroundAnswer
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -845,6 +845,36 @@ class LabelingStructureViewTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         expected_structure = self._simplify_structure(self.valid_payload["sections"])
         self.assertEqual(self._simplify_structure(response.data), expected_structure)
+
+    def test_structure_replacement_is_blocked_after_main_answers(self):
+        self._persist_structure(self.valid_payload)
+        item = Item.objects.create(labeling=self.labeling, row_index=0, payload={})
+        Answer.objects.create(
+            labeling=self.labeling, item=item, answered_by=self.owner_admin, answer_payload={},
+        )
+        self.client.force_authenticate(self.owner_admin)
+        original = self.client.get(self.structure_url).data
+
+        response = self.client.put(self.structure_url, self.valid_payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data["code"], "FORM_HAS_ANSWERS")
+        self.assertEqual(self.client.get(self.structure_url).data, original)
+
+    def test_structure_replacement_is_blocked_after_background_answers(self):
+        self.labeling.has_background_form = True
+        self.labeling.save(update_fields=["has_background_form"])
+        background_url = f"{self.structure_url}?form_type=background"
+        self.client.force_authenticate(self.owner_admin)
+        original = self.client.put(background_url, self.valid_payload, format="json")
+        self.assertEqual(original.status_code, status.HTTP_200_OK)
+        BackgroundAnswer.objects.create(labeling=self.labeling, answered_by=self.owner_admin)
+
+        response = self.client.put(background_url, self.valid_payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data["code"], "FORM_HAS_ANSWERS")
+        self.assertEqual(self.client.get(background_url).data, original.data)
 
     def test_put_replaces_structure_with_payload(self):
         self.client.force_authenticate(self.contributor_admin)

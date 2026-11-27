@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -183,6 +183,45 @@ class AnswerViewsetCreateTest(TestCase):
         )
         self.item.refresh_from_db()
         self.assertIsNone(self.item.decision_payload)
+
+    def test_retry_acknowledges_saved_answer_after_item_finishes(self):
+        payload = {
+            "labeling": self.labeling.id,
+            "item": self.item.id,
+            "answer_payload": {str(self.decisive_question.id): "aceitar"},
+        }
+        self.assertEqual(self.client.post(self.url, payload, format="json").status_code, 201)
+
+        payload["answer_payload"][str(self.decisive_question.id)] = "changed"
+        retry = self.client.post(self.url, payload, format="json")
+        self.assertEqual(retry.status_code, 409)
+        self.assertEqual(retry.data["code"], "ALREADY_ANSWERED")
+        self.assertEqual(
+            Answer.objects.get(item=self.item, answered_by=self.user).answer_payload,
+            {str(self.decisive_question.id): "aceitar"},
+        )
+
+    def test_expired_submit_cannot_use_another_annotators_fresh_slot(self):
+        other = get_user_model().objects.create_user(
+            username="fresh_reserver", email="fresh@example.com", password="123",
+        )
+        AnswerTestsHelper.enroll(self.labeling, other)
+        ItemMembership.objects.filter(item=self.item, user=self.user).update(
+            last_seen_at=now() - timedelta(minutes=31),
+        )
+        ItemMembership.objects.create(item=self.item, user=other)
+        payload = {
+            "labeling": self.labeling.id,
+            "item": self.item.id,
+            "answer_payload": {str(self.decisive_question.id): "aceitar"},
+        }
+
+        expired = self.client.post(self.url, payload, format="json")
+        self.assertEqual(expired.status_code, 403)
+        self.assertEqual(expired.data["code"], "RESERVATION_LOST")
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.post(self.url, payload, format="json").status_code, 201)
+        self.assertEqual(Answer.objects.get(item=self.item).answered_by, other)
 
     def test_viewer_cannot_post_answer(self):
         """'viewer' is read-only: even with a reserved item, it cannot register an answer."""

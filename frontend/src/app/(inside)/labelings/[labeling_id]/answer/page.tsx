@@ -14,7 +14,7 @@ import {
   validateRequiredUserSection,
 } from '@/components/context-question';
 import { useTranslations } from '@/i18n/use-translations';
-import { fetchLabelingById, fetchNextAnswer, submitAnswer } from '@/modules/labelings/labelingService';
+import { fetchLabelingById, fetchNextAnswer, renewReservation, submitAnswer } from '@/modules/labelings/labelingService';
 import {
   backgroundRedirect,
   nextLabelingRedirect,
@@ -205,6 +205,36 @@ export default function LabelingAnswerPage() {
     void loadItem();
   }, [labelingId, loadItem]);
 
+  // Keeps the reservation of the open record alive while the page is open, so nobody else
+  // is given its slot. Runs every 2 minutes and when the tab becomes visible again.
+  useEffect(() => {
+    if (!currentItemId || Number.isNaN(labelingId)) return;
+    let cancelled = false;
+    const beat = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        await renewReservation(labelingId, currentItemId);
+      } catch (error) {
+        if (cancelled) return;
+        const code = axios.isAxiosError(error) ? (error.response?.data as { code?: string } | undefined)?.code : undefined;
+        if (code === 'RESERVATION_LOST') {
+          toast.error(t('answer.reservationLost'));
+          void loadItem();
+        }
+      }
+    };
+    const timer = window.setInterval(() => void beat(), 2 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void beat();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentItemId, labelingId, loadItem, t]);
+
   const handleAnswerChange = useCallback((questionId: number | string, value: unknown) => {
     // Any answer edit clears stale feedback from the previous attempt.
     setLoadError(null);
@@ -293,6 +323,22 @@ export default function LabelingAnswerPage() {
         // reservation, so just move on to a new item.
         if (data?.code === 'NO_GROUP_SLOT') {
           toast.error(t('answer.slotTaken'));
+          await loadItem();
+          return;
+        }
+
+        // A repeated request (double click, retry after a lost response): the first
+        // copy was stored, so this counts as sent.
+        // The record is no longer reserved for this person (left idle for a long time and
+        // completed by others meanwhile): say so and move on instead of leaving them stuck.
+        if (data?.code === 'RESERVATION_LOST' || data?.code === 'ITEM_FINISHED') {
+          toast.error(t('answer.reservationLost'));
+          await loadItem();
+          return;
+        }
+
+        if (data?.code === 'ALREADY_ANSWERED') {
+          toast.success(t('answer.alreadyAnswered'));
           await loadItem();
           return;
         }

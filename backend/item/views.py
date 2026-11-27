@@ -20,7 +20,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from django.shortcuts import get_object_or_404
-from django.db.models import Count, Exists, F, OuterRef, Value
+from django.db.models import Count, Exists, F, OuterRef, Q, Value
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.utils import timezone
@@ -50,22 +50,36 @@ class ImportItemsCsvView(APIView):
             400: OpenApiResponse(description="Erro na validação ou no arquivo enviado"),
         },
     )
+    @transaction.atomic
     def put(self, request, labeling_id):
-        #TODO the idea of using PUT here feels outdated now; this might be better as a POST
-
-        items = Item.objects.filter(labeling_id=labeling_id)
-
-        if items.exists():
-            items.delete()
+        labeling = get_object_or_404(Labeling.objects.select_for_update(), id=labeling_id)
+        existing_items = list(labeling.items.select_for_update()[:2])
+        placeholder = None
+        # Form mode starts with one empty item. The first CSV may replace it
+        # until an annotator opens or answers it.
+        if labeling.form_mode and not labeling.column_names and len(existing_items) == 1:
+            candidate = existing_items[0]
+            if (
+                candidate.row_index == 0
+                and candidate.status == "pending"
+                and candidate.payload == {}
+                and not candidate.memberships.exists()
+                and not candidate.answers.exists()
+            ):
+                placeholder = candidate
+        if (existing_items and placeholder is None) or labeling.background_answers.exists():
+            return Response(
+                {
+                    "detail": "Esta rotulação já tem registros importados. Use a opção de adicionar registros.",
+                    "code": "ITEMS_ALREADY_IMPORTED",
+                },
+                status=409,
+            )
 
         serializer = UploadItemCSVSerializer(data=request.data)
         if not serializer.is_valid():
-            labeling = get_object_or_404(Labeling, id=labeling_id)
             labeling.delete()
             return Response(serializer.errors, status=400)
-
-        labeling = get_object_or_404(Labeling, id=labeling_id)
-
 
         uploaded_file = serializer.validated_data['file']
 
@@ -117,7 +131,10 @@ class ImportItemsCsvView(APIView):
                     )
                 )
 
-            Item.objects.bulk_create(items)
+            with transaction.atomic():
+                if placeholder is not None:
+                    placeholder.delete()
+                Item.objects.bulk_create(items)
         except Exception:
             labeling.delete()
             return Response(
@@ -137,9 +154,9 @@ class AddItemsToExistingLabelingView(APIView):
             400: OpenApiResponse(description="Erro na validação ou no arquivo enviado"),
         },
     )
+    @transaction.atomic
     def post(self, request, labeling_id):
-
-        labeling = get_object_or_404(Labeling, id=labeling_id)
+        labeling = get_object_or_404(Labeling.objects.select_for_update(), id=labeling_id)
 
         columns_in_labeling = labeling.column_names if isinstance(labeling.column_names, list) else []
 
@@ -249,6 +266,73 @@ class ExportImportedItemsCsvView(APIView):
         return response
     
 
+# A reservation (ItemMembership) is "fresh" while it was renewed within this window. The
+# answer page renews it every few minutes while open (see ItemReservationView), so a
+# stale reservation means the record was left for longer than this.
+RESERVATION_MINUTES = 30
+
+
+def _fresh_since():
+    return timezone.now() - timedelta(minutes=RESERVATION_MINUTES)
+
+
+def _groups_by_user(user_ids):
+    from user.models import UserGroupMembership
+    out = {uid: set() for uid in user_ids}
+    for uid, name in UserGroupMembership.objects.filter(user_id__in=user_ids).values_list('user_id', 'group__name'):
+        out.setdefault(uid, set()).add(name)
+    return out
+
+
+def _decision_slot_open(labeling, item, answer_count, remaining, reserver_groups, user_group_names):
+    """Decision mode: may one more annotator (with `user_group_names`) take `item`?
+
+    Fresh reservations of other people count like answers: against users_per_item and,
+    with group quotas, against the slot each reserver would fill (own group first, else
+    'any', as Item.pick_responded_as_for does). So everyone who holds a fresh reservation
+    can still submit. During a tiebreak (votes complete, no winner) one extra voter at a time."""
+    if answer_count < labeling.users_per_item:
+        if answer_count + len(reserver_groups) >= labeling.users_per_item:
+            return False
+    elif reserver_groups:
+        return False
+    if not labeling.has_group_quotas:
+        return True
+    left = dict(remaining)
+    for groups in reserver_groups:
+        own = [g for g in groups if left.get(g, 0) > 0]
+        if own:
+            left[max(own, key=left.get)] -= 1
+        elif left.get('any', 0) > 0:
+            left['any'] -= 1
+    return Item._slot_open({k: v for k, v in left.items() if v > 0}, user_group_names)
+
+
+def decision_open_for(labeling, items, user, user_group_names):
+    """{item_id: bool} for decision-mode items, counting other people's fresh reservations."""
+    items = list(items)
+    if not items:
+        return {}
+    ids = [it.id for it in items]
+    answers = dict(
+        Answer.objects.filter(item_id__in=ids).values('item_id').annotate(n=Count('id')).values_list('item_id', 'n')
+    )
+    reservations = list(
+        ItemMembership.objects.filter(item_id__in=ids, last_seen_at__gte=_fresh_since())
+        .exclude(user=user).values_list('item_id', 'user_id')
+    )
+    groups = _groups_by_user({uid for _, uid in reservations}) if labeling.has_group_quotas else {}
+    reservers = {}
+    for item_id, uid in reservations:
+        reservers.setdefault(item_id, []).append(groups.get(uid, set()))
+    remaining = Item.remaining_groups_for(labeling, items) if labeling.has_group_quotas else {}
+    return {
+        it.id: _decision_slot_open(labeling, it, answers.get(it.id, 0), remaining.get(it.id, {}),
+                                   reservers.get(it.id, []), user_group_names)
+        for it in items
+    }
+
+
 class NextItemView(RetrieveAPIView):
     serializer_class = NextItemResponseSerializer
 
@@ -293,8 +377,8 @@ class NextItemView(RetrieveAPIView):
             .filter(labeling=labeling, status='pending')
             .exclude(answers__answered_by=user)
             .annotate(
-                answer_count=Count('answers'),
-                membership_count=Count('memberships'),
+                answer_count=Count('answers', distinct=True),
+                membership_count=Count('memberships', distinct=True),
                 total_count=F('answer_count') + F('membership_count'),
             )
         )
@@ -317,12 +401,11 @@ class NextItemView(RetrieveAPIView):
         Steals the oldest expired membership from another user (a reservation
         that timed out), respecting group quotas when configured.
         """
-        STALE_MINUTES = 10
-        stale_limit = timezone.now() - timedelta(minutes=STALE_MINUTES)
+        stale_limit = _fresh_since()
 
         memberships = list(
             ItemMembership.objects
-            .select_for_update(skip_locked=True)
+            .select_for_update(skip_locked=True, of=('item',))
             .select_related('item', 'item__labeling')
             .filter(
                 item__labeling=labeling,
@@ -373,7 +456,7 @@ class NextItemView(RetrieveAPIView):
         # 1) Does the user already have an active membership?
         membership = (
             ItemMembership.objects
-            .select_for_update()
+            .select_for_update(of=('item',))
             .select_related('item')
             .filter(
                 user=user,
@@ -382,6 +465,17 @@ class NextItemView(RetrieveAPIView):
             )
             .first()
         )
+        if membership:
+            membership = (
+                ItemMembership.objects.select_related('item')
+                .filter(pk=membership.pk, item__status='pending').first()
+            )
+        if membership and labeling.decision and membership.last_seen_at < _fresh_since():
+            # Left for a long time: others may have filled the record meanwhile.
+            groups = self._user_group_names(user) if labeling.has_group_quotas else set()
+            if not decision_open_for(labeling, [membership.item], user, groups)[membership.item_id]:
+                membership.delete()
+                membership = None
         if membership:
             # Renews the reservation so it isn't stolen while the user stays
             # active (last_seen_at is auto_now, so an empty save is enough).
@@ -394,31 +488,7 @@ class NextItemView(RetrieveAPIView):
         )
 
         if labeling.decision == True:
-            item = self._pick_auto_candidate(
-                labeling, user, require_capacity=False, user_group_names=user_group_names
-            )
-            if item is None:
-                return None
-
-            total_count = item.total_count
-            item = (
-                Item.objects
-                .select_for_update(skip_locked=True)
-                .filter(pk=item.pk)
-                .first()
-            )
-            if item is None:
-                return None
-
-            # Item already "full" (answers + reservations beyond users_per_item):
-            # release a pending reservation so this user can vote
-            # (important for tiebreaks in decision mode).
-            if total_count > labeling.users_per_item:
-                stale_membership = item.memberships.first()
-                if stale_membership:
-                    stale_membership.delete()
-            self.ensure_membership(item, user)
-            return item
+            return self._get_item_decision_mode(labeling, user, user_group_names)
 
         # 2) Get a new eligible item (with capacity)
         item = self._pick_auto_candidate(
@@ -438,9 +508,33 @@ class NextItemView(RetrieveAPIView):
         # 3) Steal another person's expired membership
         return self._steal_stale_membership(labeling, user, user_group_names)
 
+    def _get_item_decision_mode(self, labeling, user, user_group_names):
+        """Most-voted open record first (to complete records), random among equals. Never
+        hands out a record whose slots are held by other people's fresh reservations and
+        never deletes another person's reservation."""
+        candidates = list(
+            Item.objects.filter(labeling=labeling, status='pending')
+            .exclude(answers__answered_by=user)
+            .annotate(answer_count=Count('answers', distinct=True))
+            .order_by('-answer_count', '?')
+        )
+        open_map = decision_open_for(labeling, candidates, user, user_group_names)
+        for candidate in candidates:
+            if not open_map.get(candidate.id):
+                continue
+            item = Item.objects.select_for_update(skip_locked=True).filter(pk=candidate.pk, status='pending').first()
+            if item is None:
+                continue  # someone else is taking it right now
+            # Recheck under the lock: a reservation may have been committed meanwhile.
+            if not decision_open_for(labeling, [item], user, user_group_names)[item.id]:
+                continue
+            self.ensure_membership(item, user)
+            return item
+        return None
+
     def _get_item_form_mode(self, labeling, user):
         item = (
-            Item.objects
+            Item.objects.select_for_update()
             .filter(labeling=labeling)
             .exclude(answers__answered_by=user)
             .order_by('row_index', 'id')
@@ -538,6 +632,37 @@ class NextItemView(RetrieveAPIView):
             return Response(body, status=400)
 
         return self.serialize_and_return(item)
+
+
+
+class ItemReservationView(APIView):
+    """Heartbeat of the answer page: renews the caller's reservation of `item`, or answers
+    409 RESERVATION_LOST when it is gone (or, in decision mode, the record was filled
+    while the reservation was stale) so the page can say so before more work is lost."""
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, labeling_id):
+        labeling = get_object_or_404(Labeling, id=labeling_id)
+        item_id = request.data.get('item')
+        membership = (
+            ItemMembership.objects.select_for_update(of=('item',)).select_related('item')
+            .filter(user=request.user, item_id=item_id, item__labeling=labeling).first()
+            if str(item_id).isdigit() else None
+        )
+        if membership:
+            membership = ItemMembership.objects.select_related('item').filter(pk=membership.pk).first()
+        lost = membership is None or membership.item.status == 'finished'
+        if not lost and labeling.decision and not labeling.form_mode and membership.last_seen_at < _fresh_since():
+            groups = set(UserGroup.objects.filter(memberships__user=request.user).values_list('name', flat=True))
+            if not decision_open_for(labeling, [membership.item], request.user, groups)[membership.item_id]:
+                membership.delete()
+                lost = True
+        if lost:
+            return Response({'detail': 'Este registro não está mais reservado para você.',
+                             'code': 'RESERVATION_LOST'}, status=409)
+        membership.save(update_fields=['last_seen_at'])
+        return Response({'item': membership.item_id, 'renewed': True}, status=200)
 
 
 class AnonymousNextItemView(RetrieveAPIView):

@@ -6,7 +6,11 @@ from rest_framework.test import APIClient
 from project.models import Project
 from project.models import ProjectMembership
 from labeling.models import Labeling, LabelingMembership
-from .models import Item
+from .models import Item, ItemMembership
+from datetime import timedelta
+from answer.models import Answer
+from labeling.models import LabelingSection, LabelingElement
+from user.models import UserGroup, UserGroupMembership
 from .serializers import ItemSerializer
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -216,6 +220,49 @@ class ImportItemsCsvViewTest(TestCase):
 
         self.labeling.refresh_from_db()
         self.assertEqual(self.labeling.column_names, ["titulo", "descricao"])
+
+    def test_initial_form_import_replaces_unused_placeholder(self):
+        self.labeling.form_mode = True
+        self.labeling.save(update_fields=["form_mode"])
+        placeholder = Item.objects.create(labeling=self.labeling, row_index=0, payload={})
+        upload = SimpleUploadedFile("form.csv", b"text\nfirst\nsecond\n")
+
+        response = self.client.put(self.url, {"file": upload}, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Item.objects.filter(pk=placeholder.pk).exists())
+        self.assertEqual(self.labeling.items.count(), 2)
+
+    def test_form_import_preserves_reserved_placeholder(self):
+        self.labeling.form_mode = True
+        self.labeling.save(update_fields=["form_mode"])
+        placeholder = Item.objects.create(labeling=self.labeling, row_index=0, payload={})
+        ItemMembership.objects.create(item=placeholder, user=self.owner)
+        upload = SimpleUploadedFile("form.csv", b"text\nrecord\n")
+
+        response = self.client.put(self.url, {"file": upload}, format="multipart")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(ItemMembership.objects.filter(item=placeholder, user=self.owner).exists())
+
+    def test_reimport_preserves_existing_answer_and_record(self):
+        item = Item.objects.create(
+            labeling=self.labeling, row_index=0, payload={"text": "original"},
+        )
+        answer = Answer.objects.create(
+            labeling=self.labeling, item=item, answered_by=self.owner,
+            answer_payload={"1": "keep this answer"},
+        )
+        for content in (b"text\nreplacement\n", b'text\n"unterminated\n'):
+            with self.subTest(content=content):
+                upload = SimpleUploadedFile("replace.csv", content, content_type="text/csv")
+                response = self.client.put(self.url, {"file": upload}, format="multipart")
+                self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+                self.assertEqual(response.data["code"], "ITEMS_ALREADY_IMPORTED")
+                item.refresh_from_db()
+                answer.refresh_from_db()
+                self.assertEqual(item.payload, {"text": "original"})
+                self.assertEqual(answer.answer_payload, {"1": "keep this answer"})
 
     def test_unreadable_csv_deletes_the_labeling(self):
         # Unterminated quote: pandas raises while parsing.
@@ -448,3 +495,106 @@ class JoinedPartsTest(TestCase):
         rows = self._dashboard_ids()
         self.assertEqual(set(rows), {self.main.id})
         self.assertEqual((rows[self.main.id]["part"], rows[self.main.id]["total_items"]), (2, None))
+
+
+class DecisionReservationSafetyTest(TestCase):
+    """Study 1 Parte 2 (decision mode, group quotas legal/technical/any, 3 votes):
+    an annotator who opened a record must be able to submit it. Reproduces the
+    2026-11-26 E2E finding where three people got the same record, the active
+    reservation of one was deleted and their answer was rejected."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="rs_owner", email="rs_owner@example.com", password="x", account_type="admin")
+        self.project = Project.objects.create(name="RS", created_by=self.owner)
+        self.legal = UserGroup.objects.create(name="legal", created_by=self.owner)
+        self.technical = UserGroup.objects.create(name="technical", created_by=self.owner)
+        self.labeling = Labeling.objects.create(
+            project=self.project, title="RS", created_by=self.owner, decision=True, users_per_item=3,
+            items_per_group={"any": 1, "legal": 1, "technical": 1},
+            start_date=timezone.now().date(), final_date=timezone.now().date(),
+        )
+        section = LabelingSection.objects.create(labeling=self.labeling, form_type=LabelingSection.FormType.MAIN, title="M", order=1)
+        self.q = LabelingElement.objects.create(labeling_section=section, text="Etapa 2", question_type=LabelingElement.QuestionType.MULTIPLE_CHOICE, order=1)
+        self.labeling.decisive_question = self.q
+        self.labeling.save()
+        self.items = [Item.objects.create(labeling=self.labeling, payload={"r": i}, row_index=i) for i in range(4)]
+        self.users = {}
+        for name, group in [("L1", self.legal), ("L2", self.legal), ("L3", self.legal), ("L4", self.legal),
+                            ("T1", self.technical), ("T2", self.technical)]:
+            u = User.objects.create_user(username=f"rs_{name}", email=f"rs_{name}@example.com", password="x")
+            UserGroupMembership.objects.create(group=group, user=u)
+            LabelingMembership.objects.create(labeling=self.labeling, user=u, role="annotator")
+            self.users[name] = u
+
+    def _client(self, name):
+        c = APIClient()
+        c.force_authenticate(self.users[name])
+        return c
+
+    def _open(self, name):
+        r = self._client(name).get(f"/items/{self.labeling.id}/")
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.data["item"]["id"]
+
+    def _submit(self, name, item_id, value="Inerente"):
+        return self._client(name).post("/answers/", {"labeling": self.labeling.id, "item": item_id,
+                                                     "answer_payload": {str(self.q.id): value}}, format="json")
+
+    def test_everyone_who_opened_a_record_can_submit_it(self):
+        # One record already has a vote, so the old "most answered first" order funnels everyone to it.
+        Answer.objects.create(item=self.items[0], labeling=self.labeling, answered_by=self.owner,
+                              answer_payload={str(self.q.id): "Inerente"})
+        self.items[0].decision_payload = {"Inerente": 1}
+        self.items[0].save()
+        opened = {name: self._open(name) for name in ["L1", "L2", "T1", "L3", "T2", "L4"]}
+        for name, item_id in opened.items():
+            r = self._submit(name, item_id)
+            self.assertEqual(r.status_code, 201, f"{name} lost the answer on item {item_id}: {r.status_code} {r.data}")
+        self.assertEqual(Answer.objects.filter(labeling=self.labeling).exclude(answered_by=self.owner).count(), 6)
+
+    def test_reservations_count_against_capacity_and_group_slots(self):
+        opened = {name: self._open(name) for name in ["L1", "L2", "L3", "L4"]}
+        per_item = {}
+        for name, item_id in opened.items():
+            per_item.setdefault(item_id, []).append(name)
+        # legal:1 + any:1 -> at most two legal annotators per record
+        self.assertTrue(all(len(names) <= 2 for names in per_item.values()), per_item)
+
+    def test_active_reservation_is_never_deleted_by_someone_else(self):
+        item_id = self._open("L1")
+        for name in ["L2", "T1", "L3", "T2", "L4"]:
+            self._open(name)
+        self.assertTrue(ItemMembership.objects.filter(user=self.users["L1"], item_id=item_id).exists())
+
+    def test_full_record_is_not_handed_out_until_a_reservation_goes_stale(self):
+        for item in self.items[1:]:
+            item.delete()
+        for name in ["L1", "T1", "L2"]:  # legal + technical + any: the record is fully reserved
+            self.assertEqual(self._open(name), self.items[0].id)
+        r = self._client("L3").get(f"/items/{self.labeling.id}/")
+        self.assertEqual(r.status_code, 400, r.content)
+        ItemMembership.objects.filter(user=self.users["L2"]).update(last_seen_at=timezone.now() - timedelta(hours=3))
+        self.assertEqual(self._open("L3"), self.items[0].id)
+
+    def test_second_post_for_same_record_is_rejected_as_already_answered(self):
+        item_id = self._open("L1")
+        self.assertEqual(self._submit("L1", item_id).status_code, 201)
+        ItemMembership.objects.create(item_id=item_id, user=self.users["L1"])  # a racing duplicate request
+        r = self._submit("L1", item_id)
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["code"], "ALREADY_ANSWERED")
+        self.assertEqual(Answer.objects.filter(answered_by=self.users["L1"]).count(), 1)
+
+    def test_heartbeat_renews_and_reports_a_lost_reservation(self):
+        item_id = self._open("L1")
+        ItemMembership.objects.filter(user=self.users["L1"]).update(last_seen_at=timezone.now() - timedelta(minutes=20))
+        url = f"/items/{self.labeling.id}/reservation/"
+        r = self._client("L1").post(url, {"item": item_id}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        m = ItemMembership.objects.get(user=self.users["L1"])
+        self.assertGreater(m.last_seen_at, timezone.now() - timedelta(minutes=1))
+        m.delete()
+        r = self._client("L1").post(url, {"item": item_id}, format="json")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["code"], "RESERVATION_LOST")

@@ -213,6 +213,12 @@ export async function submitAnswer(payload: AnswerPayload): Promise<AnswerRespon
   return data;
 }
 
+// Heartbeat of the answer page: keeps the annotator's reservation of the open record.
+// Rejects with 409 RESERVATION_LOST when the record is no longer reserved for them.
+export async function renewReservation(labelingId: number, itemId: number): Promise<void> {
+  await api.post(`/items/${labelingId}/reservation/`, { item: itemId });
+}
+
 // Anonymous mode: no auth, identified by the labeling's public token.
 export async function fetchNextAnonymousAnswer(token: string): Promise<AnswerStructure> {
   const { data } = await api.get<AnswerStructure>(`/items/anonymous/${token}/`);
