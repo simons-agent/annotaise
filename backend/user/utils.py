@@ -4,127 +4,116 @@ import re
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 
+# Study 1 invitation (privdev/study1 fork). Written as a personal study invitation, not an
+# "account created" notice: that wording, an empty <img> and a thin text part pushed the
+# original template into Gmail's spam folder.
 INVITATION_EMAIL_TEMPLATES = {
     "pt-BR": {
-        "subject": "[Annotaise] Sua conta foi criada - complete seu cadastro",
-        "text": """
-Você foi convidado para acessar a Annotaise como {invitation.role}.
+        "subject": "Convite para o Estudo 1 do PrivDev (AISE Lab, PUC-Rio)",
+        "text": """Olá,
 
-Complete seu cadastro pelo link:
+{inviter} convidou você para participar do Estudo 1 do projeto PrivDev, do AISE Lab da PUC-Rio.
+
+No estudo, você classifica registros de fraquezas de software (catálogos CWE e CVE) quanto à sua relação com a privacidade: duas perguntas por registro, com uma breve justificativa. Pessoas da área jurídica e da área técnica respondem às mesmas perguntas.
+
+O que pedimos:
+- Parte 1: os 45 registros iniciais, com justificativa.
+- Parte 2: pelo menos 150 registros.
+- Meta: até 15 de dezembro. O formulário continua aberto depois dessa data.
+
+Como começar:
+{video_text}- Ative sua conta e defina sua senha (o link vale 7 dias):
 {link}
-{video_text}
-Se você não reconhece este convite, ignore este e-mail.
+- Preencha o perfil (uma única vez) e comece a Parte 1. O guia de anotação fica ao lado de cada registro.
+
+Dúvidas, ou se o link vencer: responda a este e-mail.
+
+Se você não esperava este convite, pode ignorar esta mensagem.
+
+Equipe PrivDev
+AISE Lab, PUC-Rio
 """,
-        "html": """
-<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-    <p>Olá!</p>
+        "html": """<!DOCTYPE html>
+<html lang="pt-BR">
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; max-width: 600px;">
+    <p>Olá,</p>
 
-    <p>
-        Uma conta foi criada para o seu e-mail na
-        <strong>Annotaise – Alse Labeling Platform</strong>.
-    </p>
+    <p><strong>{inviter_html}</strong> convidou você para participar do <strong>Estudo 1 do projeto PrivDev</strong>, do AISE Lab da PUC-Rio.</p>
 
-    <p>Aqui estão seus dados para iniciar:</p>
+    <p>No estudo, você classifica registros de fraquezas de software (catálogos CWE e CVE) quanto à sua relação com a privacidade: duas perguntas por registro, com uma breve justificativa. Pessoas da área jurídica e da área técnica respondem às mesmas perguntas.</p>
 
-    <ul>
-        <li><strong>E-mail:</strong> {invitation.email}</li>
-        <li><strong>Papel:</strong> {invitation.role}</li>
+    <p style="margin-bottom: 4px;"><strong>O que pedimos</strong></p>
+    <ul style="margin-top: 0;">
+        <li>Parte 1: os 45 registros iniciais, com justificativa.</li>
+        <li>Parte 2: pelo menos 150 registros.</li>
+        <li>Meta: até 15 de dezembro. O formulário continua aberto depois dessa data.</li>
     </ul>
 
-    <p>
-        Para ativar sua conta e definir sua senha, clique no link abaixo:
-    </p>
+    <p style="margin-bottom: 4px;"><strong>Como começar</strong></p>
+{video_html}    <p style="margin-top: 0;">&bull; Ative sua conta e defina sua senha (o link vale 7 dias):</p>
+    <p style="margin: 16px 0 20px;"><a href="{link}" style="display:inline-block; background-color:#1e2f93; color:#ffffff; padding:12px 18px; text-decoration:none; border-radius:6px; font-weight:bold;">Ativar conta e definir senha</a></p>
+    <p>&bull; Preencha o perfil (uma única vez) e comece a Parte 1. O guia de anotação fica ao lado de cada registro.</p>
 
-    <p style="margin: 20px 0;">
-        <a href="{link}" 
-           style="background-color: #4A6CF7; 
-                  color: white; 
-                  padding: 12px 18px; 
-                  text-decoration: none; 
-                  border-radius: 6px;
-                  font-weight: bold;">
-            Ativar minha conta
-        </a>
-    </p>
+    <p>Dúvidas, ou se o link vencer: responda a este e-mail.</p>
 
-{video_html}
-    <p>
-        Se você não reconhece este convite, basta ignorar este e-mail.
-    </p>
+    <p style="font-size: 13px; color: #555;">Se você não esperava este convite, pode ignorar esta mensagem.</p>
 
-    <br>
-
-    <p style="font-size: 14px; color: #555;">
-        Bem-vindo à plataforma Annotaise.
-    </p>
-
-    <div style="margin-top: 25px; text-align: center;">
-        <img src="" alt="Annotaise Logo" width="280">
-    </div>
+    <p>Equipe PrivDev<br>AISE Lab, PUC-Rio</p>
 </body>
 </html>
 """,
     },
     "en": {
-        "subject": "[Annotaise] Your account was created - complete your registration",
-        "text": """
-You were invited to access Annotaise as {invitation.role}.
+        "subject": "Invitation to PrivDev Study 1 (AISE Lab, PUC-Rio)",
+        "text": """Hello,
 
-Complete your registration using this link:
+{inviter} has invited you to take part in Study 1 of the PrivDev project at the AISE Lab, PUC-Rio.
+
+In the study you classify software weakness records (the CWE and CVE catalogues) by how they relate to privacy: two questions per record, with a short justification. Legal and technical participants answer the same questions.
+
+What we ask:
+- Part 1: the 45 starting records, with a justification.
+- Part 2: at least 150 records.
+- Goal: by 15 December. The form stays open after that date.
+
+How to start:
+{video_text}- Activate your account and set your password (the link is valid for 7 days):
 {link}
-{video_text}
-If you do not recognize this invitation, ignore this email.
+- Fill in the profile (once) and start Part 1. The annotation guide is shown next to every record.
+
+Questions, or if the link expires: reply to this email.
+
+If you were not expecting this invitation, you can ignore this message.
+
+The PrivDev team
+AISE Lab, PUC-Rio
 """,
-        "html": """
-<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-    <p>Hello!</p>
+        "html": """<!DOCTYPE html>
+<html lang="en">
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; max-width: 600px;">
+    <p>Hello,</p>
 
-    <p>
-        An account was created for your email on
-        <strong>Annotaise - Alse Labeling Platform</strong>.
-    </p>
+    <p><strong>{inviter_html}</strong> has invited you to take part in <strong>Study 1 of the PrivDev project</strong> at the AISE Lab, PUC-Rio.</p>
 
-    <p>Here are your details to get started:</p>
+    <p>In the study you classify software weakness records (the CWE and CVE catalogues) by how they relate to privacy: two questions per record, with a short justification. Legal and technical participants answer the same questions.</p>
 
-    <ul>
-        <li><strong>Email:</strong> {invitation.email}</li>
-        <li><strong>Role:</strong> {invitation.role}</li>
+    <p style="margin-bottom: 4px;"><strong>What we ask</strong></p>
+    <ul style="margin-top: 0;">
+        <li>Part 1: the 45 starting records, with a justification.</li>
+        <li>Part 2: at least 150 records.</li>
+        <li>Goal: by 15 December. The form stays open after that date.</li>
     </ul>
 
-    <p>
-        To activate your account and set your password, click the link below:
-    </p>
+    <p style="margin-bottom: 4px;"><strong>How to start</strong></p>
+{video_html}    <p style="margin-top: 0;">&bull; Activate your account and set your password (the link is valid for 7 days):</p>
+    <p style="margin: 16px 0 20px;"><a href="{link}" style="display:inline-block; background-color:#1e2f93; color:#ffffff; padding:12px 18px; text-decoration:none; border-radius:6px; font-weight:bold;">Activate account and set password</a></p>
+    <p>&bull; Fill in the profile (once) and start Part 1. The annotation guide is shown next to every record.</p>
 
-    <p style="margin: 20px 0;">
-        <a href="{link}" 
-           style="background-color: #4A6CF7; 
-                  color: white; 
-                  padding: 12px 18px; 
-                  text-decoration: none; 
-                  border-radius: 6px;
-                  font-weight: bold;">
-            Activate my account
-        </a>
-    </p>
+    <p>Questions, or if the link expires: reply to this email.</p>
 
-{video_html}
-    <p>
-        If you do not recognize this invitation, you can ignore this email.
-    </p>
+    <p style="font-size: 13px; color: #555;">If you were not expecting this invitation, you can ignore this message.</p>
 
-    <br>
-
-    <p style="font-size: 14px; color: #555;">
-        Welcome to the Annotaise platform.
-    </p>
-
-    <div style="margin-top: 25px; text-align: center;">
-        <img src="" alt="Annotaise Logo" width="280">
-    </div>
+    <p>The PrivDev team<br>AISE Lab, PUC-Rio</p>
 </body>
 </html>
 """,
@@ -132,12 +121,12 @@ If you do not recognize this invitation, ignore this email.
 }
 
 INVITATION_VIDEO_TEXT = {
-    "pt-BR": "\nAntes de começar, assista ao vídeo tutorial:\n{url}\n",
-    "en": "\nBefore you start, watch the tutorial video:\n{url}\n",
+    "pt-BR": "- Antes de começar, assista ao vídeo tutorial (cerca de 13 minutos):\n{url}\n",
+    "en": "- Before you start, watch the tutorial video (about 13 minutes):\n{url}\n",
 }
 INVITATION_VIDEO_HTML = {
-    "pt-BR": ("Antes de começar, assista ao vídeo tutorial:", "Assistir ao vídeo tutorial"),
-    "en": ("Before you start, watch the tutorial video:", "Watch the tutorial video"),
+    "pt-BR": ("&bull; Antes de começar, assista ao vídeo tutorial (cerca de 13 minutos):", "Assistir ao vídeo tutorial"),
+    "en": ("&bull; Before you start, watch the tutorial video (about 13 minutes):", "Watch the tutorial video"),
 }
 _YOUTUBE_ID = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
@@ -159,7 +148,7 @@ def video_html(url, language):
         if video else ""
     )
     return (
-        f'    <p style="margin: 20px 0 8px;">{escape(intro)}</p>\n'
+        f'    <p style="margin: 0 0 8px;">{intro}</p>\n'
         f'    <div style="margin: 0 0 20px;">\n{thumb}'
         f'        <a href="{href}" style="display:inline-block; margin-top:8px; font-weight:bold;">&#9654; {escape(label)}</a>\n'
         f'    </div>\n'
@@ -177,6 +166,12 @@ def get_invitation_email_template(language):
     )
 
 
+def _inviter_name(invitation, language):
+    person = getattr(invitation, "invited_by", None)
+    name = " ".join(filter(None, [getattr(person, "first_name", ""), getattr(person, "last_name", "")])).strip()
+    return name or ("A equipe do PrivDev" if language == "pt-BR" else "The PrivDev team")
+
+
 def send_invitation_email(invitation, link, language=DEFAULT_INVITATION_EMAIL_LANGUAGE):
     template = get_invitation_email_template(language)
     lang = language if language in INVITATION_EMAIL_TEMPLATES else DEFAULT_INVITATION_EMAIL_LANGUAGE
@@ -184,9 +179,12 @@ def send_invitation_email(invitation, link, language=DEFAULT_INVITATION_EMAIL_LA
     video_text = INVITATION_VIDEO_TEXT[lang].format(url=url) if url else ""
     video_block = video_html(url, lang) if url else ""
     subject = template["subject"]
-    text_message = template["text"].format(invitation=invitation, link=link, video_text=video_text)
+    inviter = _inviter_name(invitation, lang)
+    text_message = template["text"].format(
+        invitation=invitation, link=link, video_text=video_text, inviter=inviter)
     html_message = template["html"].format(
-        invitation=invitation, link=link, video_html=video_block)
+        invitation=invitation, link=escape(link, quote=True), video_html=video_block,
+        inviter_html=escape(inviter))
 
     msg = EmailMultiAlternatives(
         subject=subject,

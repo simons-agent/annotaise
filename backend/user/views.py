@@ -1,3 +1,4 @@
+from labeling.data_guards import refuse_if_user_has_answers
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
@@ -38,6 +39,10 @@ class CurrentAPIView(RetrieveUpdateDestroyAPIView):
     def get_object(self):
         return self.request.user
 
+    def perform_destroy(self, instance):
+        refuse_if_user_has_answers(instance)
+        instance.delete()
+
 
 User = get_user_model()
 
@@ -72,6 +77,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             if not IsMasterAdminAccount().has_permission(request, self):
                 raise PermissionDenied("Apenas um master admin pode deletar outro admin.")
 
+        refuse_if_user_has_answers(target_user)
         return super().destroy(request, *args, **kwargs)
 
 

@@ -364,7 +364,7 @@ class InvitationPendingUserFlowTest(TestCase):
     def test_accept_invitation_activates_existing_pending_user(self):
         create_response = self.client.post(
             "/invitations/",
-            {"email": "pending.accept@example.com", "role": "standard"},
+            {"email": "pending.accept@example.com", "role": "standard", "project_ids": [self.project.id]},
             format="json",
         )
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)

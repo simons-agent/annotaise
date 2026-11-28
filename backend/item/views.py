@@ -78,7 +78,7 @@ class ImportItemsCsvView(APIView):
 
         serializer = UploadItemCSVSerializer(data=request.data)
         if not serializer.is_valid():
-            labeling.delete()
+            _discard_failed_import(labeling)
             return Response(serializer.errors, status=400)
 
         uploaded_file = serializer.validated_data['file']
@@ -86,17 +86,17 @@ class ImportItemsCsvView(APIView):
         # The labeling is created by a previous request. Any failure here must remove it,
         # otherwise it lingers empty and a retry creates a duplicate.
         if uploaded_file is None:
-            labeling.delete()
+            _discard_failed_import(labeling)
             return Response({"detail": "Nenhum arquivo enviado"}, status=400)
 
         if not getattr(uploaded_file, "name", "").lower().endswith(".csv"):
-            labeling.delete()
+            _discard_failed_import(labeling)
             return Response({"detail": "O arquivo deve ser .csv"}, status=400)
 
         try:
             df = pd.read_csv(uploaded_file, dtype=str)
         except Exception:
-            labeling.delete()
+            _discard_failed_import(labeling)
             return Response(
                 {"detail": "Não foi possível ler o arquivo CSV. Verifique o conteúdo e envie novamente."},
                 status=400,
@@ -108,7 +108,7 @@ class ImportItemsCsvView(APIView):
 
         if labeling.distribution_strategy == Labeling.DistributionStrategy.PER_PERSON:
             if "user_id" not in cols:
-                labeling.delete()
+                _discard_failed_import(labeling)
                 return Response({"detail": "Para a estratégia 'Por pessoa', o arquivo CSV deve conter uma coluna 'user_id' com os IDs dos usuários."}, status=400)
 
 
@@ -136,7 +136,7 @@ class ImportItemsCsvView(APIView):
                     placeholder.delete()
                 Item.objects.bulk_create(items)
         except Exception:
-            labeling.delete()
+            _discard_failed_import(labeling)
             return Response(
                 {"detail": "Não foi possível importar as linhas do arquivo. Verifique se todas as linhas têm o mesmo número de colunas do cabeçalho."},
                 status=400,
@@ -265,6 +265,15 @@ class ExportImportedItemsCsvView(APIView):
         )
         return response
     
+
+def _discard_failed_import(labeling):
+    """The labeling is created by the request before the upload; a failed first upload
+    removes it so a retry doesn't duplicate it. Never when it already holds records
+    (Parte 1's placeholder) or answers: then only the upload is refused."""
+    from labeling.data_guards import labelings_have_answers
+    if not labeling.items.exists() and not labelings_have_answers([labeling.id]):
+        labeling.delete()
+
 
 # A reservation (ItemMembership) is "fresh" while it was renewed within this window. The
 # answer page renews it every few minutes while open (see ItemReservationView), so a

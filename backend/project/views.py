@@ -1,3 +1,4 @@
+from labeling.data_guards import DataConflict, refuse_if_labelings_have_answers
 from django.shortcuts import render
 from rest_framework import viewsets
 from .models import Project, ProjectMembership
@@ -18,6 +19,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     http_method_names = ['get', 'post', 'patch', 'delete']
     
+
+    def perform_destroy(self, instance):
+        refuse_if_labelings_have_answers(instance.labelings.values_list("id", flat=True), "Este projeto")
+        instance.delete()
 
     def get_permissions(self):
         if self.action in ["dashboard","create"]:
@@ -122,11 +127,21 @@ class ProjectMembershipViewSet(viewsets.ModelViewSet):
                 project=instance.project, role=ProjectMembership.RoleChoices.OWNER
             ).count()
             if owner_count <= 1:
-                instance.project.delete()
-                return Response(status=status.HTTP_204_NO_CONTENT)
+                # Used to delete the whole project here (orphaning its labelings).
+                raise DataConflict("Um projeto precisa de pelo menos um proprietário.", "LAST_OWNER")
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        new_role = serializer.validated_data.get("role", instance.role)
+        if (instance.role == ProjectMembership.RoleChoices.OWNER
+                and new_role != ProjectMembership.RoleChoices.OWNER
+                and ProjectMembership.objects.filter(project=instance.project,
+                                                     role=ProjectMembership.RoleChoices.OWNER).count() <= 1):
+            raise DataConflict("Um projeto precisa de pelo menos um proprietário.", "LAST_OWNER")
+        serializer.save()
 
     def get_queryset(self):
         user = getattr(self.request, "user", None)

@@ -147,16 +147,20 @@ export default function IndividualLabelingCard({
           </div>
         )}
 
-        <ProgressBar
-          value={daysPassed}
-          max={isComplete ? daysPassed : daysTotal}
-          label={getDaysLabel()}
-          bgColor={itemsFillColor}
-          fillColor={itemsFillColor}
-          labelClassName="text-gray-800"
-          rounded="right"
-          className="-ml-3"
-        />
+        {/* Parts with an answer goal name their deadline in the pace line, and the form stays
+            open after it: no "dias passados" bar and never "prazo finalizado" for annotators. */}
+        {isManageVariant || !goal ? (
+          <ProgressBar
+            value={daysPassed}
+            max={isComplete ? daysPassed : daysTotal}
+            label={getDaysLabel()}
+            bgColor={itemsFillColor}
+            fillColor={itemsFillColor}
+            labelClassName="text-gray-800"
+            rounded="right"
+            className="-ml-3"
+          />
+        ) : null}
 
         <div className="flex items-center justify-center mt-2">{actionButton}</div>
       </div>

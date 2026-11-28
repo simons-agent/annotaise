@@ -29,11 +29,11 @@ class InvitationVideoTests(SimpleTestCase):
     @override_settings(INVITATION_VIDEO_URL=VIDEO)
     def test_video_link_in_both_languages(self):
         text, html = self._send("pt-BR")
-        self.assertIn("assista ao vídeo tutorial:\n" + VIDEO, text)
+        self.assertIn("assista ao vídeo tutorial (cerca de 13 minutos):\n" + VIDEO, text)
         self.assertIn('href="https://youtu.be/example?a=1&amp;b=2"', html)
         self.assertNotIn("img.youtube.com", html)
         text, html = self._send("en")
-        self.assertIn("watch the tutorial video:\n" + VIDEO, text)
+        self.assertIn("watch the tutorial video (about 13 minutes):\n" + VIDEO, text)
         self.assertIn("Watch the tutorial video</a>", html)
 
     @override_settings(INVITATION_VIDEO_URL="https://youtu.be/5byUtzKvO7w")
@@ -54,3 +54,33 @@ class InvitationVideoTests(SimpleTestCase):
     def test_unknown_language_falls_back_to_portuguese(self):
         text, _ = self._send("de")
         self.assertIn("vídeo tutorial", text)
+
+
+class InvitationEmailContentTest(SimpleTestCase):
+    """2026-11-27: invitations landed in Gmail spam; the content now reads as a personal study
+    invitation and has no empty image."""
+
+    def test_study_invitation_content(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from django.test import override_settings
+        from user.utils import send_invitation_email
+        inviter = SimpleNamespace(first_name="Simon", last_name="Bernbeck")
+        inv = SimpleNamespace(email="p@example.com", role="standard", invited_by=inviter)
+        sent = {}
+        with override_settings(INVITATION_VIDEO_URL="https://youtu.be/5byUtzKvO7w"), \
+                patch("user.utils.EmailMultiAlternatives") as mail:
+            send_invitation_email(inv, "https://privdev.example/accept-invitation/t?lang=pt-BR", language="pt-BR")
+            kwargs = mail.call_args.kwargs
+            sent["subject"], sent["text"] = kwargs["subject"], kwargs["body"]
+            sent["html"] = mail.return_value.attach_alternative.call_args.args[0]
+        self.assertIn("PrivDev", sent["subject"])
+        self.assertNotIn("conta foi criada", sent["subject"])
+        for part in (sent["text"], sent["html"]):
+            self.assertIn("Simon Bernbeck", part)
+            self.assertIn("https://privdev.example/accept-invitation/t?lang=pt-BR", part)
+            self.assertIn("https://youtu.be/5byUtzKvO7w", part)
+            self.assertIn("15 de dezembro", part)
+            self.assertIn("responda a este e-mail", part)
+        self.assertNotIn('src=""', sent["html"])
+        self.assertNotIn("standard", sent["text"] + sent["html"])

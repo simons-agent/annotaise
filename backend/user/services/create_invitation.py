@@ -23,7 +23,15 @@ def create_invitation(*, invited_by, email, role, project_ids, labeling_ids, ema
             labeling_ids=labeling_ids,
         )
 
+        if role == CustomUser.AccountType.STANDARD and not resolved_labeling_ids:
+            # An annotator who belongs to no labeling logs in to an empty page.
+            raise ValidationError({
+                "detail": "Escolha o projeto ou as rotulações desta pessoa antes de convidar.",
+                "code": "ASSIGNMENT_REQUIRED",
+            })
+
         _assign_user_to_labelings(user, resolved_labeling_ids)
+        _join_projects(user, resolved_labeling_ids)
 
         invitation = Invitation.objects.create(
             invited_by=invited_by,
@@ -69,6 +77,18 @@ def _create_or_get_pending_user(email, role):
     user.set_unusable_password()
     user.save(update_fields=["password"])
     return user  
+
+
+def _join_projects(user, labeling_ids):
+    """Annotators also join the labelings' projects (as create_study_accounts does)."""
+    project_ids = set(
+        Labeling.objects.filter(id__in=labeling_ids, project__isnull=False).values_list("project_id", flat=True)
+    )
+    for project_id in project_ids:
+        ProjectMembership.objects.get_or_create(
+            project_id=project_id, user=user,
+            defaults={"role": ProjectMembership.RoleChoices.ANNOTATOR},
+        )
 
 
 def _parse_int_ids(raw_ids):

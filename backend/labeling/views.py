@@ -13,6 +13,7 @@ from django.shortcuts import render, get_object_or_404
 from django.db import models, transaction
 from django.utils import timezone
 
+from labeling.data_guards import refuse_if_labelings_have_answers
 from rest_framework import viewsets, status
 
 from rest_framework.response import Response
@@ -65,6 +66,10 @@ class LabelingViewSet(viewsets.ModelViewSet):
             return LabelingDashboardSerializer
         else: return LabelingSerializer
     
+    def perform_destroy(self, instance):
+        refuse_if_labelings_have_answers([instance.id], "Esta rotulação")
+        instance.delete()
+
     def get_permissions(self):
         if self.action in ['create' ,'list_labeling_memberships']:
             self.permission_classes = [IsAdminAccount]
@@ -434,7 +439,7 @@ class LabelingMembershipViewSet(viewsets.ModelViewSet):
         if not user or not getattr(user, "is_authenticated", False):
             return self.queryset.none()
 
-        return (
+        qs = (
             self.queryset.filter(
                 Q(labeling__memberships__user=user,
                   labeling__memberships__role__in=EDIT_ROLES) |
@@ -442,6 +447,12 @@ class LabelingMembershipViewSet(viewsets.ModelViewSet):
             )
             .distinct()
         )
+        # Filters the manager (and scripts) rely on.
+        for param in ("user", "labeling"):
+            value = self.request.query_params.get(param)
+            if value and value.isdigit():
+                qs = qs.filter(**{f"{param}_id": int(value)})
+        return qs
 
 class CreateReadLabelingStructureView(APIView):
     def _resolve_form_type(self, request):
