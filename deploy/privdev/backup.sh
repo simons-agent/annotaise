@@ -61,7 +61,13 @@ trap 'rm -f "$tmp"' EXIT
 "${compose[@]}" exec -T db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$tmp"
 # Sanity check: a custom-format dump starts with "PGDMP" and lists its TOC.
 [ "$(head -c 5 "$tmp")" = "PGDMP" ] || { echo "dump is not custom format" >&2; exit 1; }
-"${compose[@]}" exec -T db pg_restore --list < "$tmp" > /dev/null
+# Copy the dump in rather than piping it to `exec -T`: Podman's exec stdin attach breaks on
+# larger dumps ("write unixpacket ... connection reset by peer", 2026-11-28 nightly).
+"${compose[@]}" cp "$tmp" db:/tmp/backup-verify.dump
+verified=0
+"${compose[@]}" exec -T db pg_restore --list /tmp/backup-verify.dump > /dev/null && verified=1
+"${compose[@]}" exec -T db rm -f /tmp/backup-verify.dump || true
+[ "$verified" = 1 ] || { echo "pg_restore --list failed on the dump" >&2; exit 1; }
 mv "$tmp" "$out"
 trap - EXIT
 echo "backup $project -> $out ($(stat -c %s "$out") bytes)"
